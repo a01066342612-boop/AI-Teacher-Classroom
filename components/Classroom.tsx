@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Teacher, GradeLevel, LessonPlan, QuizItem } from '../types';
 import { GRADES } from '../constants';
 import { generateLessonPlan, generateLessonPlanFromText, generateClassroomImage, generateSpeech, generateVideoSummary } from '../services/geminiService';
-import { Loader2, Play, Volume2, Video, RefreshCcw, Send, Sparkles, FileText, Upload, Printer, X, Eye, Music, Link as LinkIcon, FileAudio, ArrowLeft, ArrowRight, CheckCircle, XCircle, Camera, VolumeX, List, Target, BookOpen, Download, Youtube, Book, Pause, Trophy, HelpCircle } from 'lucide-react';
+import { Loader2, Play, Volume2, Video, RefreshCcw, Send, Sparkles, FileText, Upload, Printer, X, Eye, Music, Link as LinkIcon, FileAudio, ArrowLeft, ArrowRight, CheckCircle, XCircle, Camera, VolumeX, List, Target, BookOpen, Download, Youtube, Book, Pause, Trophy, HelpCircle, AlertCircle } from 'lucide-react';
 import { GlobalSettings } from '../App';
 import html2canvas from 'html2canvas';
 
@@ -190,6 +190,8 @@ const Classroom: React.FC<ClassroomProps> = ({ teacher, onBack, initialSettings 
   const fontSizeIndex = initialSettings.fontSizeIndex;
   const [bgmUrl, setBgmUrl] = useState<string | null>(initialSettings.bgmUrl);
   const [youtubeEmbedId, setYoutubeEmbedId] = useState<string | null>(initialSettings.youtubeEmbedId);
+  
+  const [audioError, setAudioError] = useState<string | null>(null);
 
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioSourceRef = useRef<AudioBufferSourceNode | null>(null);
@@ -207,6 +209,18 @@ const Classroom: React.FC<ClassroomProps> = ({ teacher, onBack, initialSettings 
     isMountedRef.current = true;
     return () => { isMountedRef.current = false; };
   }, []);
+
+  // Play greeting on mount
+  useEffect(() => {
+    const initAudio = async () => {
+        // Wait for transition animation
+        await new Promise(resolve => setTimeout(resolve, 800));
+        if (isMountedRef.current) {
+            playTeacherVoice(teacher.greeting);
+        }
+    };
+    initAudio();
+  }, [teacher]);
 
   useEffect(() => {
     const initAssets = async () => {
@@ -284,7 +298,8 @@ const Classroom: React.FC<ClassroomProps> = ({ teacher, onBack, initialSettings 
   };
 
   const playTeacherVoice = async (text: string) => {
-    // 1. Mark this text as the current desired text.
+    // 1. Reset Error
+    setAudioError(null);
     currentTextToPlay.current = text;
 
     try {
@@ -294,7 +309,7 @@ const Classroom: React.FC<ClassroomProps> = ({ teacher, onBack, initialSettings 
         // 2. Fetch Audio (might be cached or pending)
         const buffer = await getAudioBuffer(text);
         
-        // 3. Race Condition Check: If user switched sections while fetching, ignore this result.
+        // 3. Race Condition Check
         if (currentTextToPlay.current !== text) {
             return; 
         }
@@ -303,7 +318,11 @@ const Classroom: React.FC<ClassroomProps> = ({ teacher, onBack, initialSettings 
 
         const ctx = getAudioContext();
         if (ctx.state === 'suspended') {
-            await ctx.resume();
+            try {
+                await ctx.resume();
+            } catch (e) {
+                console.warn("Could not resume audio context", e);
+            }
         }
 
         const source = ctx.createBufferSource();
@@ -316,11 +335,19 @@ const Classroom: React.FC<ClassroomProps> = ({ teacher, onBack, initialSettings 
         };
         source.start();
         audioSourceRef.current = source;
-    } catch (e) {
+    } catch (e: any) {
         console.error("Audio failed", e);
-        // Only turn off playing state if we are still on the same text
-        if (isMountedRef.current && currentTextToPlay.current === text) {
-             setIsPlayingAudio(false);
+        if (isMountedRef.current) {
+            // Specifically handle Quota Exceeded or Limit error
+            if (e.message?.includes('429') || e.message?.includes('quota') || e.message?.includes('limit')) {
+                setAudioError("일일 오디오 생성 한도를 초과했습니다. (텍스트로 수업은 계속 가능합니다)");
+            } else {
+                setAudioError("오디오를 재생할 수 없습니다.");
+            }
+            
+            if (currentTextToPlay.current === text) {
+                 setIsPlayingAudio(false);
+            }
         }
     }
   };
@@ -336,8 +363,6 @@ const Classroom: React.FC<ClassroomProps> = ({ teacher, onBack, initialSettings 
         } catch (e) { /* ignore */ }
         audioSourceRef.current = null;
     }
-    // We do NOT set isPlayingAudio(false) here immediately if we are switching tracks, 
-    // because playTeacherVoice calls stopAudio then sets isPlayingAudio(true).
   };
 
   const handleStartClass = async (fileContent?: string) => {
@@ -358,6 +383,7 @@ const Classroom: React.FC<ClassroomProps> = ({ teacher, onBack, initialSettings 
     setCurrentQuizIndex(0);
     setQuizScore(0);
     setIsQuizFinished(false);
+    setAudioError(null);
     
     // Reset caches for new lesson
     audioCache.current.clear();
@@ -638,8 +664,6 @@ const Classroom: React.FC<ClassroomProps> = ({ teacher, onBack, initialSettings 
         
         <div className="flex gap-2 items-center">
             
-            {/* Play/Pause Button Removed as requested */}
-
             {/* Fairy Tale Search Button */}
             {(lessonPlan || topic) && (
                  <button 
@@ -837,6 +861,12 @@ const Classroom: React.FC<ClassroomProps> = ({ teacher, onBack, initialSettings 
                         </>
                     )}
                 </p>
+                {/* Audio Error Display in Status Box if needed */}
+                {audioError && (
+                    <div className="mt-2 text-red-500 text-xs flex items-center justify-center gap-1">
+                        <AlertCircle size={12} /> {audioError}
+                    </div>
+                )}
             </div>
         </div>
 
