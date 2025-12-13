@@ -1,0 +1,5 @@
+{
+  "name": "인공지능 수업 만들기(AI Teacher Classroom)",
+  "description": "An interactive AI classroom for elementary students where they can choose a teacher, pick a topic, and receive a multimedia lesson with voice and visuals.",
+  "requestFramePermissions": []
+}
