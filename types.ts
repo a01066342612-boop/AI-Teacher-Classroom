@@ -1,4 +1,5 @@
 
+
 export interface Teacher {
   id: string;
   name: string;
@@ -10,6 +11,7 @@ export interface Teacher {
   greeting: string;
   visualDesc: string; // Description for image generation
   backgroundPrompt: string; // Description for classroom background generation
+  customImageUrl?: string; // Optional: Uploaded custom image URL
 }
 
 export enum GradeLevel {

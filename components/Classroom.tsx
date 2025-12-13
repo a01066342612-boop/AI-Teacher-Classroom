@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Teacher, GradeLevel, LessonPlan, QuizItem } from '../types';
 import { GRADES } from '../constants';
@@ -14,7 +15,6 @@ interface ClassroomProps {
 
 /**
  * Helper to remove white background from an image via Canvas using Flood Fill
- * This prevents internal white parts (eyes, shirts) from becoming transparent.
  */
 const removeWhiteBackground = (base64Image: string): Promise<string> => {
     return new Promise((resolve) => {
@@ -35,18 +35,15 @@ const removeWhiteBackground = (base64Image: string): Promise<string> => {
             const width = canvas.width;
             const height = canvas.height;
 
-            // Threshold for "white"
             const threshold = 230;
 
             const isWhite = (r: number, g: number, b: number) => {
                 return r > threshold && g > threshold && b > threshold;
             };
 
-            const visited = new Uint8Array(width * height); // 0: unvisited, 1: visited
+            const visited = new Uint8Array(width * height);
             const stack: [number, number][] = [];
 
-            // Add white border pixels to stack
-            // Top and Bottom
             for (let x = 0; x < width; x++) {
                 const topIdx = (0 * width + x) * 4;
                 if (isWhite(data[topIdx], data[topIdx+1], data[topIdx+2])) {
@@ -59,11 +56,9 @@ const removeWhiteBackground = (base64Image: string): Promise<string> => {
                     visited[(height - 1) * width + x] = 1;
                 }
             }
-            // Left and Right
             for (let y = 0; y < height; y++) {
                 const leftIdx = (y * width + 0) * 4;
                 if (isWhite(data[leftIdx], data[leftIdx+1], data[leftIdx+2])) {
-                     // Check if not already added (corners)
                     if (visited[y * width + 0] === 0) {
                         stack.push([0, y]);
                         visited[y * width + 0] = 1;
@@ -78,15 +73,12 @@ const removeWhiteBackground = (base64Image: string): Promise<string> => {
                 }
             }
 
-            // Iterative DFS (Flood Fill)
             while (stack.length > 0) {
                 const [x, y] = stack.pop()!;
                 const idx = (y * width + x) * 4;
 
-                // Set alpha to 0
                 data[idx + 3] = 0;
 
-                // Check neighbors
                 const neighbors = [
                     [x + 1, y],
                     [x - 1, y],
@@ -116,12 +108,9 @@ const removeWhiteBackground = (base64Image: string): Promise<string> => {
     });
 };
 
-// --- Sound Effects using Web Audio API ---
 const playSuccessSound = () => {
     const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
     const t = ctx.currentTime;
-    
-    // Ding (C5)
     const osc1 = ctx.createOscillator();
     const gain1 = ctx.createGain();
     osc1.connect(gain1);
@@ -132,7 +121,6 @@ const playSuccessSound = () => {
     osc1.start(t);
     osc1.stop(t + 0.5);
 
-    // Dong (E5)
     const osc2 = ctx.createOscillator();
     const gain2 = ctx.createGain();
     osc2.connect(gain2);
@@ -143,7 +131,6 @@ const playSuccessSound = () => {
     osc2.start(t + 0.2);
     osc2.stop(t + 0.7);
 
-    // Deng (G5)
     const osc3 = ctx.createOscillator();
     const gain3 = ctx.createGain();
     osc3.connect(gain3);
@@ -158,77 +145,49 @@ const playSuccessSound = () => {
 const playFailureSound = () => {
     const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
     const t = ctx.currentTime;
-    
     const osc = ctx.createOscillator();
     osc.type = 'sawtooth';
     const gain = ctx.createGain();
     osc.connect(gain);
     gain.connect(ctx.destination);
-    
-    // Ddaeng (Slide down)
     osc.frequency.setValueAtTime(150, t);
     osc.frequency.exponentialRampToValueAtTime(100, t + 0.4);
-    
     gain.gain.setValueAtTime(0.1, t);
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.4);
-    
     osc.start(t);
     osc.stop(t + 0.4);
 };
 
-// Extended to 10 steps
 const BOARD_FONT_SIZES = [
-    'text-base md:text-lg',    // 1
-    'text-lg md:text-xl',      // 2
-    'text-xl md:text-2xl',     // 3
-    'text-2xl md:text-3xl',    // 4
-    'text-3xl md:text-4xl',    // 5
-    'text-4xl md:text-5xl',    // 6
-    'text-5xl md:text-6xl',    // 7
-    'text-6xl md:text-7xl',    // 8
-    'text-7xl md:text-8xl',    // 9
-    'text-8xl md:text-9xl',    // 10
+    'text-base md:text-lg', 'text-lg md:text-xl', 'text-xl md:text-2xl', 'text-2xl md:text-3xl', 
+    'text-3xl md:text-4xl', 'text-4xl md:text-5xl', 'text-5xl md:text-6xl', 'text-6xl md:text-7xl', 
+    'text-7xl md:text-8xl', 'text-8xl md:text-9xl'
 ];
 
 const Classroom: React.FC<ClassroomProps> = ({ teacher, onBack, initialSettings }) => {
   const [topic, setTopic] = useState('');
   const [grade, setGrade] = useState<GradeLevel>(GradeLevel.GRADE_3);
-  const [quizCount, setQuizCount] = useState<number>(3); // Default 3 questions
+  const [quizCount, setQuizCount] = useState<number>(3);
   const [status, setStatus] = useState<'idle' | 'planning' | 'teaching' | 'quiz' | 'finished'>('idle');
   const [lessonPlan, setLessonPlan] = useState<LessonPlan | null>(null);
   const [currentSectionIndex, setCurrentSectionIndex] = useState(0);
-  
-  // New State for Overview Mode (Blackboard Summary)
   const [showOverview, setShowOverview] = useState(false);
-
-  // Store images for all sections: { [sectionIndex]: string[] }
   const [sectionImages, setSectionImages] = useState<Record<number, string[]>>({});
   const [isGeneratingImages, setIsGeneratingImages] = useState(false);
-  
-  // Custom generated assets
   const [teacherImage, setTeacherImage] = useState<string | null>(null);
   const [backgroundImage, setBackgroundImage] = useState<string | null>(null);
-  const [topicBoardImage, setTopicBoardImage] = useState<string | null>(null); // Blackboard drawing
+  const [topicBoardImage, setTopicBoardImage] = useState<string | null>(null);
   const [customOverlayImage, setCustomOverlayImage] = useState<string | null>(null);
-  
-  // Quiz State
   const [currentQuizIndex, setCurrentQuizIndex] = useState(0);
   const [quizScore, setQuizScore] = useState(0);
   const [selectedQuizOption, setSelectedQuizOption] = useState<number | null>(null);
   const [isQuizFinished, setIsQuizFinished] = useState(false);
-  
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [isGeneratingVideo, setIsGeneratingVideo] = useState(false);
-  
-  // View All / Summary Mode
   const [isViewAllMode, setIsViewAllMode] = useState(false);
-  
-  // Font Settings - Initialize from props (Read-only usage)
   const fontFamily = initialSettings.fontFamily;
   const fontSizeIndex = initialSettings.fontSizeIndex;
-
-  // Background Music Settings - Initialize from props
   const [bgmUrl, setBgmUrl] = useState<string | null>(initialSettings.bgmUrl);
   const [youtubeEmbedId, setYoutubeEmbedId] = useState<string | null>(initialSettings.youtubeEmbedId);
 
@@ -238,29 +197,54 @@ const Classroom: React.FC<ClassroomProps> = ({ teacher, onBack, initialSettings 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const customImageInputRef = useRef<HTMLInputElement>(null);
 
-  // Initialize Teacher Avatar and Background
+  // Audio optimization refs
+  const audioCache = useRef<Map<string, AudioBuffer>>(new Map());
+  const pendingRequests = useRef<Map<string, Promise<AudioBuffer>>>(new Map());
+  const currentTextToPlay = useRef<string | null>(null);
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => { isMountedRef.current = false; };
+  }, []);
+
   useEffect(() => {
     const initAssets = async () => {
         try {
-            // 1. Generate Teacher Full Body Avatar
-            const avatarPrompt = teacher.visualDesc + ", holding a microphone, giving a lecture, dynamic posing, white background, isolated, full body, character design, vector style, flat color, no shadow";
-            const rawAvatarUrl = await generateClassroomImage(avatarPrompt);
-            const processedAvatarUrl = await removeWhiteBackground(rawAvatarUrl);
-            setTeacherImage(processedAvatarUrl);
+            if (teacher.customImageUrl) {
+                const processed = await removeWhiteBackground(teacher.customImageUrl);
+                if (isMountedRef.current) setTeacherImage(processed);
+            } else {
+                try {
+                    const avatarPrompt = teacher.visualDesc + ", holding a microphone, giving a lecture, dynamic posing, white background, isolated, full body, character design, vector style, flat color, no shadow";
+                    const rawAvatarUrl = await Promise.race([
+                        generateClassroomImage(avatarPrompt),
+                        new Promise<string>((_, reject) => setTimeout(() => reject(new Error("Timeout")), 10000))
+                    ]);
+                    const processedAvatarUrl = await removeWhiteBackground(rawAvatarUrl);
+                    if (isMountedRef.current) setTeacherImage(processedAvatarUrl);
+                } catch (e) {
+                    console.error("Avatar generation failed, falling back to emoji", e);
+                }
+            }
 
-            // 2. Generate Classroom Background (parallel request)
-            // Modified to ensure it is an Elementary School Classroom
-            const bgPrompt = "Bright and cozy elementary school classroom with chalkboard, desks, and cute decorations, " + teacher.backgroundPrompt + ", wide angle, empty background, educational setting, no characters, high quality, vector style";
-            const bgUrl = await generateClassroomImage(bgPrompt);
-            setBackgroundImage(bgUrl);
+            try {
+                const bgPrompt = "Bright and cozy elementary school classroom with chalkboard, desks, and cute decorations, " + teacher.backgroundPrompt + ", wide angle, empty background, educational setting, no characters, high quality, vector style";
+                const bgUrl = await Promise.race([
+                    generateClassroomImage(bgPrompt),
+                    new Promise<string>((_, reject) => setTimeout(() => reject(new Error("Timeout")), 10000))
+                ]);
+                if (isMountedRef.current) setBackgroundImage(bgUrl);
+            } catch (e) {
+                console.error("Background generation failed", e);
+            }
         } catch (e) {
-            console.error("Asset generation failed", e);
+            console.error("Asset generation init failed", e);
         }
     };
     initAssets();
   }, [teacher]);
 
-  // Initialize Audio Context on user interaction
   const getAudioContext = () => {
     if (!audioContextRef.current) {
       audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
@@ -268,13 +252,105 @@ const Classroom: React.FC<ClassroomProps> = ({ teacher, onBack, initialSettings 
     return audioContextRef.current;
   };
 
+  const getAudioBuffer = async (text: string): Promise<AudioBuffer> => {
+      // 1. Check Memory Cache
+      if (audioCache.current.has(text)) {
+          return audioCache.current.get(text)!;
+      }
+      
+      // 2. Check Pending Requests (Deduplication)
+      if (pendingRequests.current.has(text)) {
+          return pendingRequests.current.get(text)!;
+      }
+      
+      // 3. New Request
+      const promise = generateSpeech(text, teacher.voiceName)
+        .then(buffer => {
+            if (isMountedRef.current) {
+                audioCache.current.set(text, buffer);
+                pendingRequests.current.delete(text);
+            }
+            return buffer;
+        })
+        .catch(err => {
+            if (isMountedRef.current) {
+                pendingRequests.current.delete(text);
+            }
+            throw err;
+        });
+      
+      pendingRequests.current.set(text, promise);
+      return promise;
+  };
+
+  const playTeacherVoice = async (text: string) => {
+    // 1. Mark this text as the current desired text.
+    currentTextToPlay.current = text;
+
+    try {
+        stopAudio();
+        setIsPlayingAudio(true);
+        
+        // 2. Fetch Audio (might be cached or pending)
+        const buffer = await getAudioBuffer(text);
+        
+        // 3. Race Condition Check: If user switched sections while fetching, ignore this result.
+        if (currentTextToPlay.current !== text) {
+            return; 
+        }
+        
+        if (!isMountedRef.current) return;
+
+        const ctx = getAudioContext();
+        if (ctx.state === 'suspended') {
+            await ctx.resume();
+        }
+
+        const source = ctx.createBufferSource();
+        source.buffer = buffer;
+        source.connect(ctx.destination);
+        source.onended = () => { 
+            if (isMountedRef.current && currentTextToPlay.current === text) {
+                setIsPlayingAudio(false); 
+            }
+        };
+        source.start();
+        audioSourceRef.current = source;
+    } catch (e) {
+        console.error("Audio failed", e);
+        // Only turn off playing state if we are still on the same text
+        if (isMountedRef.current && currentTextToPlay.current === text) {
+             setIsPlayingAudio(false);
+        }
+    }
+  };
+
+  const prefetchAudio = (text: string) => {
+      getAudioBuffer(text).catch(e => console.warn("Prefetch error", e));
+  }
+
+  const stopAudio = () => {
+    if (audioSourceRef.current) {
+        try {
+            audioSourceRef.current.stop();
+        } catch (e) { /* ignore */ }
+        audioSourceRef.current = null;
+    }
+    // We do NOT set isPlayingAudio(false) here immediately if we are switching tracks, 
+    // because playTeacherVoice calls stopAudio then sets isPlayingAudio(true).
+  };
+
   const handleStartClass = async (fileContent?: string) => {
     if (!topic.trim() && !fileContent) return;
+    
+    // Ensure audio context is ready on user gesture
+    getAudioContext().resume();
+
     setStatus('planning');
     setLessonPlan(null);
     setSectionImages({});
     setVideoUrl(null);
-    setTopicBoardImage(null); // Reset topic board
+    setTopicBoardImage(null);
     setCurrentSectionIndex(0);
     setIsViewAllMode(false);
     setSelectedQuizOption(null);
@@ -282,6 +358,11 @@ const Classroom: React.FC<ClassroomProps> = ({ teacher, onBack, initialSettings 
     setCurrentQuizIndex(0);
     setQuizScore(0);
     setIsQuizFinished(false);
+    
+    // Reset caches for new lesson
+    audioCache.current.clear();
+    pendingRequests.current.clear();
+    currentTextToPlay.current = null;
 
     try {
       let plan: LessonPlan;
@@ -294,18 +375,19 @@ const Classroom: React.FC<ClassroomProps> = ({ teacher, onBack, initialSettings 
       setLessonPlan(plan);
       if (fileContent) setTopic(plan.topic);
 
-      // Generate Initial Topic Board Chalk Drawing
       generateClassroomImage(`Simple white chalk line drawing about "${plan.topic}" on a black background. Minimalist, kid-friendly style, icon style, no text.`)
-        .then(url => setTopicBoardImage(url))
+        .then(url => { if (isMountedRef.current) setTopicBoardImage(url) })
         .catch(err => console.error("Topic board image failed", err));
       
-      // Instead of loading section 0 immediately, show the overview first.
       setStatus('teaching');
       setShowOverview(true);
       
-      // Play a short greeting audio
       const greetingText = `${teacher.greeting} 오늘은 ${plan.topic}에 대해 배워볼 거야. 칠판을 잘 보렴.`;
       playTeacherVoice(greetingText);
+      
+      if (plan.sections.length > 0) {
+          prefetchAudio(plan.sections[0].text);
+      }
 
     } catch (error) {
       console.error("Failed to generate lesson:", error);
@@ -338,20 +420,17 @@ const Classroom: React.FC<ClassroomProps> = ({ teacher, onBack, initialSettings 
   const handleCustomImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (!file) return;
-      
-      // Read as Data URL to display
       const reader = new FileReader();
       reader.onload = (event) => {
           const result = event.target?.result as string;
-          // Optionally remove background or just display as is. Let's just display.
           setCustomOverlayImage(result);
       };
       reader.readAsDataURL(file);
+      e.target.value = ''; // Reset
   };
 
   const loadSection = async (index: number, plan: LessonPlan) => {
     if (index >= plan.sections.length) {
-      // End of Lesson, Start Quiz
       startQuiz(plan);
       return;
     }
@@ -359,17 +438,13 @@ const Classroom: React.FC<ClassroomProps> = ({ teacher, onBack, initialSettings 
     setCurrentSectionIndex(index);
     const section = plan.sections[index];
     
-    // Dynamic Blackboard Update: Update the small blackboard behind the teacher with content relevant to the current section
     const boardPrompt = `Simple white chalk line drawing about: "${section.sectionTitle}". Minimalist white lines on black background, icon style, clear and simple for kids, no text.`;
     generateClassroomImage(boardPrompt)
-        .then(url => setTopicBoardImage(url))
+        .then(url => { if (isMountedRef.current) setTopicBoardImage(url) })
         .catch(err => console.error("Dynamic board image failed", err));
 
-    // 1. Generate 3 Images (if not already generated for this section)
     if (!sectionImages[index] && section.visualType === 'image' && section.visualPrompts && section.visualPrompts.length > 0) {
         setIsGeneratingImages(true);
-        
-        // Generate all images in parallel
         Promise.all(section.visualPrompts.map(prompt => 
             generateClassroomImage(prompt + " style: clean educational illustration, colorful, cute, high quality")
                 .catch(e => {
@@ -377,16 +452,19 @@ const Classroom: React.FC<ClassroomProps> = ({ teacher, onBack, initialSettings 
                     return null;
                 })
         )).then(results => {
+            if (!isMountedRef.current) return;
             const validImages = results.filter((url): url is string => !!url);
             setSectionImages(prev => ({ ...prev, [index]: validImages }));
             setIsGeneratingImages(false);
         });
     }
 
-    // 2. Play Audio (Auto-play only if not in View All Mode)
-    // This satisfies the user request: "음성은 화면이 넘어가면 자동으로 재생하게 해주고"
     if (!isViewAllMode) {
         playTeacherVoice(section.text);
+    }
+    
+    if (index + 1 < plan.sections.length) {
+        prefetchAudio(plan.sections[index + 1].text);
     }
   };
 
@@ -401,7 +479,6 @@ const Classroom: React.FC<ClassroomProps> = ({ teacher, onBack, initialSettings 
   const loadQuizQuestion = (index: number, plan: LessonPlan) => {
       if (index >= plan.quizzes.length) {
           setIsQuizFinished(true);
-          // Play finish sound/speech
           playTeacherVoice(`모든 퀴즈가 끝났어. ${plan.quizzes.length}문제 중에 ${quizScore}문제를 맞췄구나! 참 잘했어!`);
           return;
       }
@@ -410,66 +487,22 @@ const Classroom: React.FC<ClassroomProps> = ({ teacher, onBack, initialSettings 
       setSelectedQuizOption(null);
       const quiz = plan.quizzes[index];
 
-      // Play Audio (Read Question and Options)
-      // "Question 1. [Question Text]. 1: [Opt1]. 2: [Opt2]..."
       const optionsText = quiz.options.map((opt, i) => `${i + 1}번, ${opt}`).join('. ');
       const textToRead = `문제 ${index + 1}번. ${quiz.question}. ${optionsText}. 정답을 골라봐.`;
       
-      // Auto-play audio only if not in view-all mode (though view-all doesn't apply to quiz usually)
       playTeacherVoice(textToRead);
-  };
-
-  const playTeacherVoice = async (text: string) => {
-    try {
-        stopAudio();
-        setIsPlayingAudio(true);
-        const buffer = await generateSpeech(text, teacher.voiceName);
-        const ctx = getAudioContext();
-        
-        if (ctx.state === 'suspended') {
-            await ctx.resume();
-        }
-
-        const source = ctx.createBufferSource();
-        source.buffer = buffer;
-        source.connect(ctx.destination);
-        source.onended = () => setIsPlayingAudio(false);
-        source.start();
-        audioSourceRef.current = source;
-    } catch (e) {
-        console.error("Audio failed", e);
-        setIsPlayingAudio(false);
-    }
-  };
-
-  const stopAudio = () => {
-    if (audioSourceRef.current) {
-        try {
-            audioSourceRef.current.stop();
-        } catch (e) { /* ignore */ }
-        audioSourceRef.current = null;
-    }
-    setIsPlayingAudio(false);
-  };
-
-  const toggleAudio = () => {
-      if (isPlayingAudio) {
-          stopAudio();
-      } else {
-          if (lessonPlan && status === 'teaching') {
-              playTeacherVoice(lessonPlan.sections[currentSectionIndex].text);
-          } else if (lessonPlan && status === 'quiz' && !isQuizFinished) {
-              // Re-read quiz question
-              const quiz = lessonPlan.quizzes[currentQuizIndex];
-              const optionsText = quiz.options.map((opt, i) => `${i + 1}번, ${opt}`).join('. ');
-              const textToRead = `문제 ${currentQuizIndex + 1}번. ${quiz.question}. ${optionsText}.`;
-              playTeacherVoice(textToRead);
-          }
+      
+      if (index + 1 < plan.quizzes.length) {
+          const nextQuiz = plan.quizzes[index + 1];
+          const nextOptionsText = nextQuiz.options.map((opt, i) => `${i + 1}번, ${opt}`).join('. ');
+          const nextTextToRead = `문제 ${index + 2}번. ${nextQuiz.question}. ${nextOptionsText}. 정답을 골라봐.`;
+          prefetchAudio(nextTextToRead);
       }
   };
 
   const handleNextSection = () => {
     if (lessonPlan) {
+        // Stop any current audio before loading next
         stopAudio();
         loadSection(currentSectionIndex + 1, lessonPlan);
     }
@@ -485,9 +518,7 @@ const Classroom: React.FC<ClassroomProps> = ({ teacher, onBack, initialSettings 
   const handleQuizAnswer = (index: number) => {
       if (!lessonPlan) return;
       setSelectedQuizOption(index);
-      
       const isCorrect = index === lessonPlan.quizzes[currentQuizIndex].answer;
-      
       if (isCorrect) {
           playSuccessSound();
           setQuizScore(prev => prev + 1);
@@ -498,7 +529,7 @@ const Classroom: React.FC<ClassroomProps> = ({ teacher, onBack, initialSettings 
 
   const handleNextQuizQuestion = () => {
       if (!lessonPlan) return;
-      stopAudio(); // Stop any feedback audio if playing
+      stopAudio(); 
       loadQuizQuestion(currentQuizIndex + 1, lessonPlan);
   };
 
@@ -525,29 +556,13 @@ const Classroom: React.FC<ClassroomProps> = ({ teacher, onBack, initialSettings 
   const handleFairyTaleSearch = () => {
       if (!lessonPlan?.topic && !topic) return;
       const query = lessonPlan?.topic || topic;
-      // Search for "Topic + Fairy Tale"
       window.open(`https://www.youtube.com/results?search_query=${encodeURIComponent(query + " 관련 동화")}`, '_blank');
   };
 
   const handleSongSearch = () => {
       if (!lessonPlan?.topic && !topic) return;
       const query = lessonPlan?.topic || topic;
-      // Search for "Topic + Song/Nursery Rhyme"
       window.open(`https://www.youtube.com/results?search_query=${encodeURIComponent(query + " 동요 노래")}`, '_blank');
-  };
-
-  const resetClass = () => {
-      stopAudio();
-      setStatus('idle');
-      setLessonPlan(null);
-      setTopic('');
-      setSectionImages({});
-      setVideoUrl(null);
-      setCustomOverlayImage(null);
-      setIsViewAllMode(false);
-      setSelectedQuizOption(null);
-      setShowOverview(false);
-      // We do not reset BGM here to keep music playing across sessions if desired
   };
 
   const handleCaptureScreen = async () => {
@@ -564,7 +579,6 @@ const Classroom: React.FC<ClassroomProps> = ({ teacher, onBack, initialSettings 
     }
   };
 
-  // Auto-scroll blackboard text
   useEffect(() => {
     if (blackboardRef.current) {
         blackboardRef.current.scrollTop = 0;
@@ -624,19 +638,7 @@ const Classroom: React.FC<ClassroomProps> = ({ teacher, onBack, initialSettings 
         
         <div className="flex gap-2 items-center">
             
-            {/* Play/Pause Button */}
-            {(status === 'teaching' || (status === 'quiz' && !isQuizFinished)) && !showOverview && !isViewAllMode && (
-                 <button 
-                    onClick={toggleAudio}
-                    className={`${isPlayingAudio ? 'bg-amber-600 hover:bg-amber-500' : 'bg-green-600 hover:bg-green-500'} text-white p-2 rounded-full transition-colors flex items-center gap-2 px-3 shadow-md`}
-                    title={isPlayingAudio ? "목소리 일시정지" : "다시 듣기"}
-                >
-                    {isPlayingAudio ? <Pause size={20} /> : <Play size={20} />}
-                    <span className="hidden md:inline font-bold text-sm">
-                        {isPlayingAudio ? "일시정지" : "다시 듣기"}
-                    </span>
-                </button>
-            )}
+            {/* Play/Pause Button Removed as requested */}
 
             {/* Fairy Tale Search Button */}
             {(lessonPlan || topic) && (
@@ -744,10 +746,6 @@ const Classroom: React.FC<ClassroomProps> = ({ teacher, onBack, initialSettings 
                              <div className="w-full h-full opacity-20" style={{backgroundImage: 'repeating-linear-gradient(45deg, transparent 0, transparent 20px, #3e2723 20px, #3e2723 22px)'}}></div>
                         </div>
                         <div className="absolute bottom-[25%] w-full h-3 bg-[#5d4037]"></div>
-                        {/* Loading Spinner for BG */}
-                        <div className="absolute inset-0 flex items-center justify-center">
-                            <Loader2 className="animate-spin text-stone-400 opacity-50" size={32} />
-                        </div>
                     </>
                 )}
 
@@ -807,8 +805,11 @@ const Classroom: React.FC<ClassroomProps> = ({ teacher, onBack, initialSettings 
                         className="max-h-full max-w-full object-contain filter drop-shadow-2xl animate-breathe origin-bottom" 
                     />
                 ) : (
-                     <div className="text-[10rem] md:text-[12rem] lg:text-[14rem] animate-pulse">
-                        {teacher.avatar}
+                    // Fallback Emoji Avatar with background
+                     <div className="relative flex items-center justify-center w-64 h-64 bg-white/20 backdrop-blur-md rounded-full border-4 border-white/40 shadow-xl animate-pulse">
+                        <div className="text-[8rem] md:text-[10rem]">
+                             {teacher.avatar}
+                        </div>
                     </div>
                 )}
                 

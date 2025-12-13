@@ -1,14 +1,17 @@
-import React, { useRef } from 'react';
-import { TEACHERS } from '../constants';
+
+import React, { useRef, useState } from 'react';
 import { Teacher } from '../types';
 import { GlobalSettings } from '../App';
-import { Type, Music, Upload, FileAudio, Settings, Search, Camera, User, School, GraduationCap, Save } from 'lucide-react';
+import { TEACHERS } from '../constants';
+import { Type, Music, Settings, Search, Camera, User, School, GraduationCap, Save, Trash2, ImagePlus, RotateCcw, Sparkles, Loader2 } from 'lucide-react';
 import html2canvas from 'html2canvas';
 
 interface TeacherSelectorProps {
   onSelect: (teacher: Teacher) => void;
   settings: GlobalSettings;
   setSettings: React.Dispatch<React.SetStateAction<GlobalSettings>>;
+  teachers: Teacher[];
+  setTeachers: React.Dispatch<React.SetStateAction<Teacher[]>>;
 }
 
 const FONT_FAMILIES = [
@@ -44,17 +47,9 @@ const FONT_SIZES = [
     { name: '10단계 (아주 크게)', value: 9 },
 ];
 
-const TeacherSelector: React.FC<TeacherSelectorProps> = ({ onSelect, settings, setSettings }) => {
-  const bgmInputRef = useRef<HTMLInputElement>(null);
+const TeacherSelector: React.FC<TeacherSelectorProps> = ({ onSelect, settings, setSettings, teachers, setTeachers }) => {
   const [youtubeSearchTerm, setYoutubeSearchTerm] = React.useState('');
-
-  const handleBgmUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const url = URL.createObjectURL(file);
-    setSettings(prev => ({ ...prev, bgmUrl: url, youtubeEmbedId: null }));
-  };
-
+  
   const handleYoutubeSearch = () => {
     if (!youtubeSearchTerm.trim()) return;
     window.open(`https://www.youtube.com/results?search_query=${encodeURIComponent(youtubeSearchTerm)}`, '_blank');
@@ -86,6 +81,13 @@ const TeacherSelector: React.FC<TeacherSelectorProps> = ({ onSelect, settings, s
       } catch (e) {
           console.error("Failed to save student info", e);
           alert('정보 저장에 실패했습니다.');
+      }
+  };
+
+  const handleDeleteTeacher = (e: React.MouseEvent, id: string) => {
+      e.stopPropagation(); // Prevent card selection
+      if (window.confirm('정말로 이 선생님 캐릭터를 삭제하시겠습니까?')) {
+          setTeachers(prev => prev.filter(t => t.id !== id));
       }
   };
 
@@ -176,26 +178,7 @@ const TeacherSelector: React.FC<TeacherSelectorProps> = ({ onSelect, settings, s
                     <div className="flex items-center gap-2 flex-wrap justify-center">
                         <Music className="text-stone-500" size={18} />
                         
-                        {/* PC File Upload Button */}
-                        <input 
-                                type="file" 
-                                accept="audio/*"
-                                ref={bgmInputRef}
-                                onChange={handleBgmUpload}
-                                className="hidden"
-                            />
-                        <button 
-                            onClick={() => bgmInputRef.current?.click()}
-                            className={`flex items-center gap-1 px-3 py-2 text-sm font-medium rounded-lg border focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors ${settings.bgmUrl ? 'bg-green-100 border-green-400 text-green-700' : 'bg-white text-stone-700 border-stone-300 hover:bg-stone-50'}`}
-                            title="PC에서 음악 파일 선택"
-                        >
-                            {settings.bgmUrl ? <FileAudio size={16}/> : <Upload size={16}/>}
-                            <span>{settings.bgmUrl ? "파일 재생 중" : "PC 파일 선택"}</span>
-                        </button>
-
-                        <span className="text-stone-300 text-xs hidden sm:inline">|</span>
-
-                        {/* YouTube Search Helper */}
+                        {/* YouTube Search Helper (File Upload Removed) */}
                         <div className="flex items-center gap-1 bg-white border border-stone-300 rounded-lg p-1">
                             <input
                                 type="text"
@@ -211,8 +194,8 @@ const TeacherSelector: React.FC<TeacherSelectorProps> = ({ onSelect, settings, s
                         </div>
                     </div>
                     
-                    {/* Screen Capture */}
-                    <div className="border-l border-stone-300 pl-4">
+                    {/* Screen Capture Button */}
+                    <div className="border-l border-stone-300 pl-4 flex gap-2">
                         <button 
                             onClick={handleCaptureScreen}
                             className="flex items-center gap-2 px-3 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors shadow-sm font-bold text-sm"
@@ -232,15 +215,29 @@ const TeacherSelector: React.FC<TeacherSelectorProps> = ({ onSelect, settings, s
             👇 원하는 선생님 카드를 클릭하면 수업이 시작됩니다!
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6 max-w-7xl mx-auto pb-10">
-            {TEACHERS.map((teacher) => (
-            <button
+            {teachers.map((teacher) => (
+            <div
                 key={teacher.id}
                 onClick={() => onSelect(teacher)}
-                className="group relative flex flex-col items-center p-6 bg-white rounded-3xl shadow-lg hover:shadow-2xl hover:-translate-y-2 transition-all duration-300 border-4 border-transparent hover:border-yellow-400 h-full justify-between"
+                className="group relative flex flex-col items-center p-6 bg-white rounded-3xl shadow-lg hover:shadow-2xl hover:-translate-y-2 transition-all duration-300 border-4 border-transparent hover:border-yellow-400 h-full justify-between cursor-pointer"
+                role="button"
             >
+                {/* Delete Button (Visible on Hover) */}
+                <button
+                    onClick={(e) => handleDeleteTeacher(e, teacher.id)}
+                    className="absolute top-3 right-3 p-2 text-stone-300 hover:text-red-500 hover:bg-red-50 rounded-full opacity-0 group-hover:opacity-100 transition-all z-20"
+                    title="선생님 삭제"
+                >
+                    <Trash2 size={20} />
+                </button>
+
                 <div className="flex flex-col items-center">
-                    <div className="text-7xl md:text-8xl mb-4 transform transition-transform group-hover:scale-110 duration-300 filter drop-shadow-md">
-                        {teacher.avatar}
+                    <div className="mb-4 transform transition-transform group-hover:scale-110 duration-300 filter drop-shadow-md flex items-center justify-center h-24 w-24">
+                        {teacher.customImageUrl ? (
+                             <img src={teacher.customImageUrl} alt={teacher.name} className="w-full h-full object-contain rounded-full border-2 border-stone-100 bg-stone-50" />
+                        ) : (
+                             <span className="text-7xl md:text-8xl">{teacher.avatar}</span>
+                        )}
                     </div>
                     
                     <div className="flex items-center gap-2 mb-2">
@@ -256,10 +253,10 @@ const TeacherSelector: React.FC<TeacherSelectorProps> = ({ onSelect, settings, s
                     </p>
                 </div>
                 
-                <div className={`w-full py-2 rounded-xl text-white text-sm font-bold shadow-md transition-opacity opacity-80 group-hover:opacity-100 ${teacher.color}`}>
+                <div className={`w-full py-2 rounded-xl text-white text-sm font-bold shadow-md transition-opacity opacity-80 group-hover:opacity-100 text-center ${teacher.color}`}>
                     수업 듣기 &rarr;
                 </div>
-            </button>
+            </div>
             ))}
         </div>
       </div>

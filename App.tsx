@@ -1,7 +1,9 @@
+
 import React, { useState } from 'react';
 import TeacherSelector from './components/TeacherSelector';
 import Classroom from './components/Classroom';
 import { Teacher } from './types';
+import { TEACHERS } from './constants';
 
 export interface GlobalSettings {
   fontFamily: string;
@@ -16,6 +18,8 @@ export interface GlobalSettings {
 
 function App() {
   const [selectedTeacher, setSelectedTeacher] = useState<Teacher | null>(null);
+  // Lifted state for teacher list to persist deletions across component unmounts
+  const [teachers, setTeachers] = useState<Teacher[]>(TEACHERS);
   
   // Lifted state for settings
   const [settings, setSettings] = useState<GlobalSettings>(() => {
@@ -48,6 +52,8 @@ function App() {
           onSelect={setSelectedTeacher} 
           settings={settings}
           setSettings={setSettings}
+          teachers={teachers}
+          setTeachers={setTeachers}
         />
       ) : (
         <Classroom 

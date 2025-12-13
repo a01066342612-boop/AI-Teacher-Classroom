@@ -2,7 +2,7 @@
 import { GradeLevel, Teacher } from "./types";
 
 export const TEACHERS: Teacher[] = [
-  // Existing Teachers (t1 - t30)
+  // Existing Teachers (t1 - t40)
   {
     id: 't1',
     name: '부엉이 선생님',
@@ -243,7 +243,6 @@ export const TEACHERS: Teacher[] = [
     visualDesc: 'A tall giraffe teacher wearing a safari outfit and holding binoculars, full body character, 2D vector illustration, nature lover',
     backgroundPrompt: 'A greenhouse classroom with tall glass ceilings, tropical plants, vines, sunlight, nature observatory style, 2D vector illustration'
   },
-  // New Teachers (t21 - t30)
   {
     id: 't21',
     name: '고슴도치 선생님',
@@ -364,7 +363,6 @@ export const TEACHERS: Teacher[] = [
     visualDesc: 'A cute otter teacher holding a magnifying glass and a seashell, wearing a lab coat, full body character, 2D vector illustration, curious',
     backgroundPrompt: 'A riverside classroom, pebbles, water stream, nature observation tools, refreshing atmosphere, 2D vector illustration'
   },
-  // Added Teachers (t31 - t40)
   {
     id: 't31',
     name: '햄스터 선생님',
@@ -484,6 +482,128 @@ export const TEACHERS: Teacher[] = [
     greeting: '천...천...히... 숨...을... 들...이...마...셔...',
     visualDesc: 'A slow relaxed sloth teacher hanging from a branch, wearing a nightcap, full body character, 2D vector illustration, chill',
     backgroundPrompt: 'A jungle canopy classroom, vines, hammocks, dappled sunlight, very slow and relaxed atmosphere, 2D vector illustration'
+  },
+  // Added Teachers (t41 - t50)
+  {
+    id: 't41',
+    name: '낙타 선생님',
+    avatar: '🐪',
+    style: '끈기 있고 인내심 강한 역사 선생님',
+    voiceName: 'Kore',
+    gender: 'female',
+    color: 'bg-amber-600',
+    greeting: '사막을 건너는 것처럼 천천히, 하지만 끝까지 가보자.',
+    visualDesc: 'A patient camel teacher wearing a scarf and carrying a map bag, full body character, 2D vector illustration, educational style',
+    backgroundPrompt: 'A desert oasis classroom, tent style, warm sunlight, ancient maps, mysterious atmosphere, 2D vector illustration'
+  },
+  {
+    id: 't42',
+    name: '상어 선생님',
+    avatar: '🦈',
+    style: '카리스마 넘치고 시원시원한 수영/체육 선생님',
+    voiceName: 'Fenrir',
+    gender: 'male',
+    color: 'bg-blue-700',
+    greeting: '거친 파도를 헤치고 나갈 준비 됐나?!',
+    visualDesc: 'A cool shark teacher wearing a whistle and a swimming cap, full body character, 2D vector illustration, energetic',
+    backgroundPrompt: 'An underwater swimming pool classroom, bubbles, starting blocks, blue water, energetic atmosphere, 2D vector illustration'
+  },
+  {
+    id: 't43',
+    name: '무당벌레 선생님',
+    avatar: '🐞',
+    style: '작지만 예쁘고 섬세한 미술 선생님',
+    voiceName: 'Zephyr',
+    gender: 'female',
+    color: 'bg-red-400',
+    greeting: '작은 점 하나에도 아름다움이 숨어있단다.',
+    visualDesc: 'A cute ladybug teacher wearing a beret and holding a paintbrush, full body character, 2D vector illustration, artistic',
+    backgroundPrompt: 'A giant leaf classroom, dewdrops, colorful flowers, tiny easels, nature art studio, 2D vector illustration'
+  },
+  {
+    id: 't44',
+    name: '코뿔소 선생님',
+    avatar: '🦏',
+    style: '우직하고 든든한 안전 지킴이 선생님',
+    voiceName: 'Charon',
+    gender: 'male',
+    color: 'bg-gray-500',
+    greeting: '걱정 마라. 내가 너희들을 안전하게 지켜줄 테니.',
+    visualDesc: 'A strong rhinoceros teacher wearing a security guard uniform or safety vest, full body character, 2D vector illustration, reliable',
+    backgroundPrompt: 'A safety education center classroom, traffic cones, safety signs, sturdy structure, secure atmosphere, 2D vector illustration'
+  },
+  {
+    id: 't47',
+    name: '거북이 선생님',
+    avatar: '🐢',
+    style: '느리지만 꾸준한 노력파 국어 선생님',
+    voiceName: 'Kore',
+    gender: 'female',
+    color: 'bg-green-400',
+    greeting: '조금 느려도 괜찮아. 멈추지 않고 끝까지 읽어보자.',
+    visualDesc: 'A wise turtle teacher wearing big glasses and carrying a heavy book on shell, full body character, 2D vector illustration, slow and steady',
+    backgroundPrompt: 'A cozy reading nook classroom, slow stream nearby, mossy rocks, peaceful and quiet atmosphere, 2D vector illustration'
+  },
+  {
+    id: 't49',
+    name: '용 선생님',
+    avatar: '🐉',
+    style: '상상력이 풍부한 전설 속 이야기 선생님',
+    voiceName: 'Zephyr',
+    gender: 'female',
+    color: 'bg-emerald-500',
+    greeting: '내 등에 타렴. 상상의 세계로 날아가 보자!',
+    visualDesc: 'A beautiful eastern dragon teacher holding a crystal ball, mystical aura, full body character, 2D vector illustration, legendary',
+    backgroundPrompt: 'A classroom in the clouds with oriental asian architecture, floating islands, mist, magical atmosphere, 2D vector illustration'
+  },
+  {
+    id: 't50',
+    name: '알파카 선생님',
+    avatar: '🦙',
+    style: '보들보들하고 친절한 상담/도덕 선생님',
+    voiceName: 'Charon',
+    gender: 'male',
+    color: 'bg-neutral-200',
+    greeting: '음~ 기분 좋은 바람이 부네. 마음을 편하게 가져봐.',
+    visualDesc: 'A fluffy alpaca teacher wearing a colorful poncho, smiling gently, full body character, 2D vector illustration, soft',
+    backgroundPrompt: 'A meadow classroom on a high plateau, wind turbines, grass, blue sky, fresh and open atmosphere, 2D vector illustration'
+  },
+  // Newly Added Teachers
+  {
+    id: 't51',
+    name: '백마 선생님',
+    avatar: '🐴',
+    style: '우아하고 품격 있는 승마 선생님 스타일',
+    voiceName: 'Zephyr',
+    gender: 'female',
+    color: 'bg-purple-300',
+    greeting: '히힝! 드넓은 초원을 달리는 기분으로 상쾌하게 시작해볼까?',
+    visualDesc: 'A beautiful white horse teacher with a long mane, wearing an elegant riding jacket, full body character, 2D vector illustration, noble',
+    backgroundPrompt: 'A stable classroom with hay bales, wooden fences, trophies, horseshoes, rustic but elegant atmosphere, 2D vector illustration'
+  },
+  {
+    id: 't52',
+    name: '암탉 선생님',
+    avatar: '🐔',
+    style: '따뜻하게 품어주는 유치원 선생님 스타일',
+    voiceName: 'Kore',
+    gender: 'female',
+    color: 'bg-orange-200',
+    greeting: '꼬끼오~ 우리 병아리들, 오늘도 선생님 날개 아래로 모이렴.',
+    visualDesc: 'A caring hen teacher wearing an apron and holding a basket of eggs, full body character, 2D vector illustration, motherly',
+    backgroundPrompt: 'A farm coop classroom, straw nests, warm morning sunlight, wooden beams, cozy and rustic, 2D vector illustration'
+  },
+  {
+    id: 't53',
+    name: '황소 선생님',
+    avatar: '🐂',
+    style: '우직하고 힘찬 체육/농업 선생님 스타일',
+    voiceName: 'Fenrir',
+    gender: 'male',
+    color: 'bg-red-700',
+    greeting: '음메~! 끈기 있게 밭을 갈듯이 공부도 꾸준히 해야 한다!',
+    visualDesc: 'A strong bull teacher wearing overalls and holding a pitchfork or a book, full body character, 2D vector illustration, strong',
+    backgroundPrompt: 'A green pasture classroom, fences, big red barn in background, blue sky, open field, 2D vector illustration'
   }
 ];
 

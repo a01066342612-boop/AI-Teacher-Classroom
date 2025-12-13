@@ -46,6 +46,47 @@ const lessonPlanSchema = {
   required: ["topic", "learningGoal", "sections", "quizzes"]
 };
 
+// Schema for Teacher Metadata
+const teacherSchema = {
+  type: Type.OBJECT,
+  properties: {
+    name: { type: Type.STRING, description: "Name of the teacher in Korean, e.g., '공룡 선생님' or '우주인 선생님'" },
+    style: { type: Type.STRING, description: "A short, fun description of their teaching style in Korean" },
+    voiceName: { type: Type.STRING, enum: ['Puck', 'Charon', 'Kore', 'Fenrir', 'Zephyr'] },
+    gender: { type: Type.STRING, enum: ['male', 'female'] },
+    color: { type: Type.STRING, description: "A Tailwind CSS background color class (must be one of: bg-red-500, bg-blue-500, bg-green-500, bg-yellow-500, bg-purple-500, bg-pink-500, bg-indigo-500, bg-teal-500, bg-orange-500)" },
+    greeting: { type: Type.STRING, description: "A friendly and characteristic short greeting message in Korean" },
+    visualDesc: { type: Type.STRING, description: "A detailed English description for generating a full-body character vector illustration. Must include 'full body character', 'vector illustration', 'white background'." },
+    backgroundPrompt: { type: Type.STRING, description: "A detailed English description for generating a matching classroom background." },
+    avatarEmoji: { type: Type.STRING, description: "A single emoji representing the character" }
+  },
+  required: ["name", "style", "voiceName", "gender", "color", "greeting", "visualDesc", "backgroundPrompt", "avatarEmoji"]
+};
+
+/**
+ * Generates teacher metadata based on a user keyword.
+ */
+export const generateTeacherMetadata = async (keyword: string): Promise<any> => {
+  const prompt = `
+    Create a unique, fun, and kid-friendly elementary school teacher character based on the keyword: "${keyword}".
+    The character should be suitable for an educational app.
+    Return the response in JSON format.
+  `;
+
+  const response = await ai.models.generateContent({
+    model: 'gemini-2.5-flash',
+    contents: prompt,
+    config: {
+      responseMimeType: "application/json",
+      responseSchema: teacherSchema
+    }
+  });
+
+  const text = response.text;
+  if (!text) throw new Error("No response from AI");
+  return JSON.parse(text);
+};
+
 /**
  * Generates a structured lesson plan based on topic, grade, and teacher style.
  */
