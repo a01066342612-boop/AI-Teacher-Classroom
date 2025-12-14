@@ -1,9 +1,9 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Teacher, GradeLevel, LessonPlan, QuizItem } from '../types';
+import { Teacher, GradeLevel, LessonPlan, QuizItem, ActivityItem } from '../types';
 import { GRADES } from '../constants';
 import { generateLessonPlan, generateLessonPlanFromText, generateClassroomImage, generateSpeech, generateVideoSummary } from '../services/geminiService';
-import { Loader2, Play, Volume2, Video, RefreshCcw, Send, Sparkles, FileText, Upload, Printer, X, Eye, Music, Link as LinkIcon, FileAudio, ArrowLeft, ArrowRight, CheckCircle, XCircle, Camera, VolumeX, List, Target, BookOpen, Download, Youtube, Book, Pause, Trophy, HelpCircle, AlertCircle } from 'lucide-react';
+import { Loader2, Play, Volume2, Video, RefreshCcw, Send, Sparkles, FileText, Upload, Printer, X, Eye, Music, Link as LinkIcon, FileAudio, ArrowLeft, ArrowRight, CheckCircle, XCircle, Camera, VolumeX, List, Target, BookOpen, Download, Youtube, Book, Pause, Trophy, HelpCircle, AlertCircle, Palette, Scissors, CheckSquare, Star, MessageCircle, PenTool } from 'lucide-react';
 import { GlobalSettings } from '../App';
 import html2canvas from 'html2canvas';
 
@@ -168,7 +168,7 @@ const Classroom: React.FC<ClassroomProps> = ({ teacher, onBack, initialSettings 
   const [topic, setTopic] = useState('');
   const [grade, setGrade] = useState<GradeLevel>(GradeLevel.GRADE_3);
   const [quizCount, setQuizCount] = useState<number>(3);
-  const [status, setStatus] = useState<'idle' | 'planning' | 'teaching' | 'quiz' | 'finished'>('idle');
+  const [status, setStatus] = useState<'idle' | 'planning' | 'teaching' | 'quiz' | 'activity' | 'finished'>('idle');
   const [lessonPlan, setLessonPlan] = useState<LessonPlan | null>(null);
   const [currentSectionIndex, setCurrentSectionIndex] = useState(0);
   const [showOverview, setShowOverview] = useState(false);
@@ -186,6 +186,10 @@ const Classroom: React.FC<ClassroomProps> = ({ teacher, onBack, initialSettings 
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [isGeneratingVideo, setIsGeneratingVideo] = useState(false);
   const [isViewAllMode, setIsViewAllMode] = useState(false);
+  const [selectedActivity, setSelectedActivity] = useState<ActivityItem | null>(null);
+  const [activityExampleImage, setActivityExampleImage] = useState<string | null>(null);
+  const [isGeneratingActivityImage, setIsGeneratingActivityImage] = useState(false);
+  
   const fontFamily = initialSettings.fontFamily;
   const fontSizeIndex = initialSettings.fontSizeIndex;
   const [bgmUrl, setBgmUrl] = useState<string | null>(initialSettings.bgmUrl);
@@ -233,7 +237,7 @@ const Classroom: React.FC<ClassroomProps> = ({ teacher, onBack, initialSettings 
                     const avatarPrompt = teacher.visualDesc + ", holding a microphone, giving a lecture, dynamic posing, white background, isolated, full body, character design, vector style, flat color, no shadow";
                     const rawAvatarUrl = await Promise.race([
                         generateClassroomImage(avatarPrompt),
-                        new Promise<string>((_, reject) => setTimeout(() => reject(new Error("Timeout")), 10000))
+                        new Promise<string>((_, reject) => setTimeout(() => reject(new Error("Timeout")), 30000))
                     ]);
                     const processedAvatarUrl = await removeWhiteBackground(rawAvatarUrl);
                     if (isMountedRef.current) setTeacherImage(processedAvatarUrl);
@@ -246,7 +250,7 @@ const Classroom: React.FC<ClassroomProps> = ({ teacher, onBack, initialSettings 
                 const bgPrompt = "Bright and cozy elementary school classroom with chalkboard, desks, and cute decorations, " + teacher.backgroundPrompt + ", wide angle, empty background, educational setting, no characters, high quality, vector style";
                 const bgUrl = await Promise.race([
                     generateClassroomImage(bgPrompt),
-                    new Promise<string>((_, reject) => setTimeout(() => reject(new Error("Timeout")), 10000))
+                    new Promise<string>((_, reject) => setTimeout(() => reject(new Error("Timeout")), 30000))
                 ]);
                 if (isMountedRef.current) setBackgroundImage(bgUrl);
             } catch (e) {
@@ -297,15 +301,29 @@ const Classroom: React.FC<ClassroomProps> = ({ teacher, onBack, initialSettings 
       return promise;
   };
 
+  const stopAudio = () => {
+    if (audioSourceRef.current) {
+        try {
+            audioSourceRef.current.stop();
+        } catch (e) { /* ignore */ }
+        audioSourceRef.current = null;
+    }
+    // Stop Browser TTS
+    if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+    }
+    setIsPlayingAudio(false);
+  };
+
   const playTeacherVoice = async (text: string) => {
     // 1. Reset Error
     setAudioError(null);
     currentTextToPlay.current = text;
+    
+    stopAudio();
+    setIsPlayingAudio(true);
 
     try {
-        stopAudio();
-        setIsPlayingAudio(true);
-        
         // 2. Fetch Audio (might be cached or pending)
         const buffer = await getAudioBuffer(text);
         
@@ -336,17 +354,43 @@ const Classroom: React.FC<ClassroomProps> = ({ teacher, onBack, initialSettings 
         source.start();
         audioSourceRef.current = source;
     } catch (e: any) {
-        console.error("Audio failed", e);
-        if (isMountedRef.current) {
-            // Specifically handle Quota Exceeded or Limit error
-            if (e.message?.includes('429') || e.message?.includes('quota') || e.message?.includes('limit')) {
-                setAudioError("일일 오디오 생성 한도를 초과했습니다. (텍스트로 수업은 계속 가능합니다)");
-            } else {
-                setAudioError("오디오를 재생할 수 없습니다.");
-            }
-            
-            if (currentTextToPlay.current === text) {
+        console.error("Gemini TTS Audio failed", e);
+        
+        // Fallback to Browser TTS
+        if (isMountedRef.current && currentTextToPlay.current === text && 'speechSynthesis' in window) {
+             const utterance = new SpeechSynthesisUtterance(text);
+             utterance.lang = 'ko-KR';
+             
+             // Try to find a Korean voice
+             const voices = window.speechSynthesis.getVoices();
+             const korVoice = voices.find(v => v.lang.includes('ko'));
+             if (korVoice) utterance.voice = korVoice;
+
+             utterance.onend = () => {
+                 if (isMountedRef.current && currentTextToPlay.current === text) {
+                     setIsPlayingAudio(false);
+                 }
+             };
+             
+             utterance.onerror = () => {
                  setIsPlayingAudio(false);
+                 setAudioError("오디오 재생 실패");
+             };
+
+             window.speechSynthesis.speak(utterance);
+             
+             // Check if it was a Quota error and warn user
+             if (e.message?.includes('429') || e.message?.includes('quota') || e.message?.includes('limit') || e.message?.includes('RESOURCE_EXHAUSTED')) {
+                 setAudioError("일일 오디오 한도 초과: 기본 목소리로 재생됩니다.");
+             }
+        } else {
+            if (isMountedRef.current) {
+                setIsPlayingAudio(false);
+                if (e.message?.includes('429') || e.message?.includes('quota') || e.message?.includes('limit') || e.message?.includes('RESOURCE_EXHAUSTED')) {
+                    setAudioError("일일 오디오 생성 한도를 초과했습니다.");
+                } else {
+                    setAudioError("오디오를 재생할 수 없습니다.");
+                }
             }
         }
     }
@@ -355,15 +399,6 @@ const Classroom: React.FC<ClassroomProps> = ({ teacher, onBack, initialSettings 
   const prefetchAudio = (text: string) => {
       getAudioBuffer(text).catch(e => console.warn("Prefetch error", e));
   }
-
-  const stopAudio = () => {
-    if (audioSourceRef.current) {
-        try {
-            audioSourceRef.current.stop();
-        } catch (e) { /* ignore */ }
-        audioSourceRef.current = null;
-    }
-  };
 
   const handleStartClass = async (fileContent?: string) => {
     if (!topic.trim() && !fileContent) return;
@@ -383,6 +418,7 @@ const Classroom: React.FC<ClassroomProps> = ({ teacher, onBack, initialSettings 
     setCurrentQuizIndex(0);
     setQuizScore(0);
     setIsQuizFinished(false);
+    setSelectedActivity(null);
     setAudioError(null);
     
     // Reset caches for new lesson
@@ -408,8 +444,11 @@ const Classroom: React.FC<ClassroomProps> = ({ teacher, onBack, initialSettings 
       setStatus('teaching');
       setShowOverview(true);
       
-      const greetingText = `${teacher.greeting} 오늘은 ${plan.topic}에 대해 배워볼 거야. 칠판을 잘 보렴.`;
-      playTeacherVoice(greetingText);
+      // Generate Overview Speech: Greeting + Goal + Sequence
+      const sequenceText = plan.sections.map((s, i) => `${i + 1}단계, ${s.sectionTitle}`).join('. ');
+      const overviewScript = `${teacher.greeting} 오늘은 ${plan.topic}에 대해 배워볼 거야. 칠판을 잘 보렴. 오늘의 학습 목표는, ${plan.learningGoal}. 수업은 이렇게 진행될 거야. ${sequenceText}. 자, 그럼 시작해볼까?`;
+      
+      playTeacherVoice(overviewScript);
       
       if (plan.sections.length > 0) {
           prefetchAudio(plan.sections[0].text);
@@ -471,7 +510,9 @@ const Classroom: React.FC<ClassroomProps> = ({ teacher, onBack, initialSettings 
 
     if (!sectionImages[index] && section.visualType === 'image' && section.visualPrompts && section.visualPrompts.length > 0) {
         setIsGeneratingImages(true);
-        Promise.all(section.visualPrompts.map(prompt => 
+        // Only take the first prompt to speed up loading
+        const promptsToUse = section.visualPrompts.slice(0, 1);
+        Promise.all(promptsToUse.map(prompt => 
             generateClassroomImage(prompt + " style: clean educational illustration, colorful, cute, high quality")
                 .catch(e => {
                     console.error("Image gen failed for prompt:", prompt, e);
@@ -500,6 +541,55 @@ const Classroom: React.FC<ClassroomProps> = ({ teacher, onBack, initialSettings 
       setQuizScore(0);
       setIsQuizFinished(false);
       loadQuizQuestion(0, plan);
+  };
+
+  const startActivity = () => {
+    if (!lessonPlan || !lessonPlan.activities || lessonPlan.activities.length === 0) return;
+    setStatus('activity');
+    setSelectedActivity(null);
+    setActivityExampleImage(null);
+    const activityScript = `퀴즈도 잘 풀었구나! 이제는 재미있는 활동을 해볼 시간이야. 선생님이 3가지 활동을 준비했어. 하고 싶은 활동을 골라보렴.`;
+    playTeacherVoice(activityScript);
+  };
+
+  const selectSpecificActivity = (activity: ActivityItem) => {
+      setSelectedActivity(activity);
+      setActivityExampleImage(null);
+      setIsGeneratingActivityImage(true);
+
+      generateClassroomImage(activity.exampleResultDesc + " style: cute, colorful, educational, kids craft masterpiece, high quality, white background, single object, clear details")
+        .then(url => {
+            if(isMountedRef.current) setActivityExampleImage(url);
+        })
+        .catch(e => console.error(e))
+        .finally(() => {
+            if(isMountedRef.current) setIsGeneratingActivityImage(false);
+        });
+
+      const materialsText = activity.materials.join(', ');
+      const stepsText = activity.steps.map((step, i) => `${i + 1}단계, ${step}`).join('. ');
+      
+      const detailScript = `좋아! ${activity.title}을(를) 해보자. ${activity.description}. 필요한 준비물은 ${materialsText}이야. 활동 순서를 잘 들어봐. ${stepsText}. 완성되면 오른쪽 그림처럼 멋진 작품이 될 거야. 차근차근 따라해 보렴.`;
+      
+      playTeacherVoice(detailScript);
+  };
+
+  const handleRegenerateActivityImage = () => {
+        if (!selectedActivity) return;
+        setActivityExampleImage(null);
+        setIsGeneratingActivityImage(true);
+
+        generateClassroomImage(selectedActivity.exampleResultDesc + " style: cute, colorful, educational, kids craft masterpiece, high quality, white background, single object, clear details")
+        .then(url => {
+            if(isMountedRef.current) setActivityExampleImage(url);
+        })
+        .catch(e => {
+            console.error(e);
+            alert("이미지 생성 실패");
+        })
+        .finally(() => {
+            if(isMountedRef.current) setIsGeneratingActivityImage(false);
+        });
   };
 
   const loadQuizQuestion = (index: number, plan: LessonPlan) => {
@@ -637,18 +727,18 @@ const Classroom: React.FC<ClassroomProps> = ({ teacher, onBack, initialSettings 
       )}
 
       {/* --- HEADER / CONTROLS --- */}
-      <div className="bg-orange-950/90 h-16 flex items-center justify-between px-6 z-10 shadow-lg border-b-4 border-yellow-900 no-print backdrop-blur-sm relative">
-        <div className="flex items-center gap-4">
-            <button onClick={onBack} className="text-white hover:text-yellow-400 font-bold flex items-center gap-2">
-                <ArrowLeft size={20} /> 선생님 바꾸기
+      <div className="bg-orange-950/90 h-12 flex items-center justify-between px-4 z-10 shadow-lg border-b-4 border-yellow-900 no-print backdrop-blur-sm relative">
+        <div className="flex items-center gap-2">
+            <button onClick={onBack} className="text-white hover:text-yellow-400 font-bold flex items-center gap-1 text-sm md:text-base">
+                <ArrowLeft size={18} /> 선생님 바꾸기
             </button>
-            <div className="bg-green-900 px-4 py-1 rounded border-2 border-green-700 text-green-100 font-chalk text-xl shadow-inner flex items-center gap-2">
+            <div className="bg-green-900 px-3 py-1 rounded border-2 border-green-700 text-green-100 font-chalk text-lg shadow-inner flex items-center gap-2">
                 <span>{teacher.name}의 교실</span>
             </div>
             
             {/* Student Info Display in Header */}
             {(initialSettings.schoolName || initialSettings.gradeClass || initialSettings.studentName) && (
-                <div className="hidden lg:flex items-center gap-2 bg-black/20 px-3 py-1 rounded text-white text-sm font-sans">
+                <div className="hidden lg:flex items-center gap-2 bg-black/20 px-3 py-1 rounded text-white text-xs font-sans">
                      {initialSettings.schoolName && <span>{initialSettings.schoolName}</span>}
                      {initialSettings.gradeClass && <span className="text-yellow-200">{initialSettings.gradeClass}</span>}
                      {initialSettings.studentName && <span className="font-bold">{initialSettings.studentName}</span>}
@@ -656,7 +746,7 @@ const Classroom: React.FC<ClassroomProps> = ({ teacher, onBack, initialSettings 
             )}
 
             {lessonPlan && (
-                <div className="hidden xl:block bg-yellow-100/10 px-3 py-1 rounded text-yellow-200 font-comic">
+                <div className="hidden xl:block bg-yellow-100/10 px-3 py-1 rounded text-yellow-200 font-comic text-sm">
                      주제: {lessonPlan.topic}
                 </div>
             )}
@@ -668,10 +758,10 @@ const Classroom: React.FC<ClassroomProps> = ({ teacher, onBack, initialSettings 
             {(lessonPlan || topic) && (
                  <button 
                     onClick={handleFairyTaleSearch}
-                    className="bg-pink-500 hover:bg-pink-400 text-white p-2 rounded-full transition-colors flex items-center gap-2 px-3 shadow-md"
+                    className="bg-pink-500 hover:bg-pink-400 text-white p-1.5 rounded-full transition-colors flex items-center gap-2 px-3 shadow-md"
                     title="유튜브에서 관련 동화 검색"
                 >
-                    <BookOpen size={20} /> <span className="hidden md:inline font-bold text-sm">동화 듣기</span>
+                    <BookOpen size={18} /> <span className="hidden md:inline font-bold text-xs">동화 듣기</span>
                 </button>
             )}
 
@@ -679,10 +769,10 @@ const Classroom: React.FC<ClassroomProps> = ({ teacher, onBack, initialSettings 
             {(lessonPlan || topic) && (
                  <button 
                     onClick={handleSongSearch}
-                    className="bg-green-500 hover:bg-green-400 text-white p-2 rounded-full transition-colors flex items-center gap-2 px-3 shadow-md"
+                    className="bg-green-500 hover:bg-green-400 text-white p-1.5 rounded-full transition-colors flex items-center gap-2 px-3 shadow-md"
                     title="유튜브에서 관련 동요/노래 검색"
                 >
-                    <Music size={20} /> <span className="hidden md:inline font-bold text-sm">노래/동요</span>
+                    <Music size={18} /> <span className="hidden md:inline font-bold text-xs">노래/동요</span>
                 </button>
             )}
 
@@ -690,20 +780,20 @@ const Classroom: React.FC<ClassroomProps> = ({ teacher, onBack, initialSettings 
             {(lessonPlan || topic) && (
                  <button 
                     onClick={handleYoutubeSearch}
-                    className="bg-red-600 hover:bg-red-500 text-white p-2 rounded-full transition-colors flex items-center gap-2 px-3"
+                    className="bg-red-600 hover:bg-red-500 text-white p-1.5 rounded-full transition-colors flex items-center gap-2 px-3"
                     title="유튜브에서 관련 영상 검색"
                 >
-                    <Youtube size={20} /> <span className="hidden md:inline font-bold text-sm">유튜브 검색</span>
+                    <Youtube size={18} /> <span className="hidden md:inline font-bold text-xs">유튜브 검색</span>
                 </button>
             )}
 
             {/* Screen Capture Button */}
             <button 
                 onClick={handleCaptureScreen}
-                className="bg-white/10 hover:bg-white/20 text-white p-2 rounded-full transition-colors"
+                className="bg-white/10 hover:bg-white/20 text-white p-1.5 rounded-full transition-colors"
                 title="화면 저장하기"
             >
-                <Camera size={20} />
+                <Camera size={18} />
             </button>
 
             {status === 'teaching' && (
@@ -712,9 +802,9 @@ const Classroom: React.FC<ClassroomProps> = ({ teacher, onBack, initialSettings 
                         stopAudio();
                         setIsViewAllMode(!isViewAllMode);
                     }}
-                    className="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 rounded font-bold flex items-center gap-2"
+                    className="bg-blue-600 hover:bg-blue-500 text-white px-2 py-1 rounded font-bold flex items-center gap-1 text-xs"
                 >
-                    {isViewAllMode ? <><RefreshCcw size={16}/> 슬라이드 보기</> : <><Eye size={16}/> 한눈에 보기</>}
+                    {isViewAllMode ? <><RefreshCcw size={14}/> 슬라이드 보기</> : <><Eye size={14}/> 한눈에 보기</>}
                 </button>
             )}
             
@@ -722,7 +812,7 @@ const Classroom: React.FC<ClassroomProps> = ({ teacher, onBack, initialSettings 
                  <select 
                     value={grade} 
                     onChange={(e) => setGrade(e.target.value as GradeLevel)}
-                    className="bg-yellow-100 text-stone-800 rounded px-2 py-1 font-bold outline-none border-2 border-yellow-600"
+                    className="bg-yellow-100 text-stone-800 rounded px-2 py-1 font-bold outline-none border-2 border-yellow-600 text-sm"
                 >
                     {GRADES.map(g => <option key={g} value={g}>{g}</option>)}
                 </select>
@@ -731,7 +821,7 @@ const Classroom: React.FC<ClassroomProps> = ({ teacher, onBack, initialSettings 
       </div>
 
       {/* --- MAIN CONTENT AREA --- */}
-      <div className="flex-1 flex flex-col md:flex-row p-4 gap-4 overflow-hidden relative z-10">
+      <div className="flex-1 flex flex-col md:flex-row p-2 gap-2 overflow-hidden relative z-10">
         
         {/* --- TEACHER AVATAR & BACKGROUND AREA --- */}
         <div className={`absolute bottom-0 left-0 md:relative md:w-1/4 flex flex-col items-center justify-end z-20 pointer-events-none md:pointer-events-auto transition-all duration-300 ${isViewAllMode ? 'opacity-0 md:opacity-100 md:w-16' : ''}`}>
@@ -877,7 +967,7 @@ const Classroom: React.FC<ClassroomProps> = ({ teacher, onBack, initialSettings 
             
             <div 
                 ref={blackboardRef}
-                className="flex-1 p-8 md:p-12 overflow-y-auto z-10 custom-scrollbar relative"
+                className="flex-1 p-4 md:p-6 overflow-y-auto z-10 custom-scrollbar relative"
             >
                 {status === 'idle' && (
                     <div className="flex flex-col items-center justify-center h-full space-y-8 animate-fadeIn">
@@ -1039,7 +1129,7 @@ const Classroom: React.FC<ClassroomProps> = ({ teacher, onBack, initialSettings 
                         </div>
                     ) : (
                         <div className="flex flex-col h-full animate-fadeIn">
-                            <div className="flex justify-between items-end mb-6 border-b border-white/10 pb-4">
+                            <div className="flex justify-between items-end mb-6 border-b border-white/10 pb-4 shrink-0">
                                 <div>
                                     <span className="text-yellow-500 font-bold text-sm tracking-widest uppercase mb-1 block">Step {currentSectionIndex + 1} / {lessonPlan.sections.length}</span>
                                     <h2 className={`text-3xl md:text-4xl text-white ${fontFamily} leading-tight flex items-center gap-3`}>
@@ -1055,27 +1145,41 @@ const Classroom: React.FC<ClassroomProps> = ({ teacher, onBack, initialSettings 
                                 </button>
                             </div>
 
-                            <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
-                                {/* Images Grid */}
-                                {sectionImages[currentSectionIndex] && (
-                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-                                        {sectionImages[currentSectionIndex].map((imgUrl, i) => (
-                                            <div key={i} className="aspect-square rounded-lg overflow-hidden border-4 border-white/10 shadow-lg bg-black/20 group">
-                                                <img src={imgUrl} alt={`visual-${i}`} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" />
+                            <div className="flex-1 flex flex-col md:flex-row gap-6 overflow-hidden">
+                                {/* Left: Images */}
+                                <div className="w-full md:w-1/2 flex flex-col h-48 md:h-full relative shrink-0">
+                                    {sectionImages[currentSectionIndex] ? (
+                                        <div className="w-full h-full flex items-center justify-center p-2">
+                                            <div className={`w-full h-full grid gap-2 ${sectionImages[currentSectionIndex].length > 1 ? 'grid-cols-2 grid-rows-2' : 'grid-cols-1'}`}>
+                                                {sectionImages[currentSectionIndex].map((imgUrl, i) => (
+                                                    <div key={i} className="w-full h-full rounded-xl overflow-hidden border-2 border-white/10 shadow-lg bg-black/20 group relative">
+                                                        <img src={imgUrl} alt={`visual-${i}`} className="w-full h-full object-contain" />
+                                                    </div>
+                                                ))}
                                             </div>
-                                        ))}
-                                    </div>
-                                )}
-                                {isGeneratingImages && !sectionImages[currentSectionIndex] && (
-                                     <div className="flex items-center justify-center h-32 mb-8 bg-white/5 rounded-lg border border-white/10 border-dashed">
-                                        <Loader2 className="animate-spin text-white/30 mr-2" />
-                                        <span className="text-white/30 text-sm">참고자료 생성 중...</span>
-                                     </div>
-                                )}
+                                        </div>
+                                    ) : (
+                                        <div className="w-full h-full flex items-center justify-center bg-white/5 rounded-xl border-2 border-white/10 border-dashed">
+                                            {isGeneratingImages ? (
+                                                <div className="flex flex-col items-center gap-3 animate-pulse">
+                                                    <Loader2 className="animate-spin text-white/50" size={40} />
+                                                    <span className="text-white/50 text-sm font-comic">그림 그리는 중...</span>
+                                                </div>
+                                            ) : (
+                                                <div className="text-white/10 flex flex-col items-center">
+                                                    <span className="text-5xl">🖼️</span>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
 
-                                <p className={`text-white/90 leading-loose whitespace-pre-line ${fontFamily} ${BOARD_FONT_SIZES[fontSizeIndex]}`}>
-                                    {lessonPlan.sections[currentSectionIndex].text}
-                                </p>
+                                {/* Right: Text */}
+                                <div className="w-full md:w-1/2 h-full overflow-y-auto custom-scrollbar pr-2 flex items-center">
+                                    <p className={`text-white/90 leading-loose whitespace-pre-line ${fontFamily} ${BOARD_FONT_SIZES[fontSizeIndex]} w-full`}>
+                                        {lessonPlan.sections[currentSectionIndex].text}
+                                    </p>
+                                </div>
                             </div>
                         </div>
                     )
@@ -1105,29 +1209,18 @@ const Classroom: React.FC<ClassroomProps> = ({ teacher, onBack, initialSettings 
 
                                     <div className="flex justify-center gap-4 flex-wrap">
                                         <button 
+                                            onClick={startActivity}
+                                            className="px-6 py-3 bg-green-500 hover:bg-green-600 text-white rounded-xl font-bold flex items-center gap-2 transition-colors shadow-lg animate-pulse"
+                                        >
+                                            <Palette size={20} /> 체험 활동 하러 가기
+                                        </button>
+                                        <button 
                                             onClick={() => handleStartClass()}
                                             className="px-6 py-3 bg-white/10 hover:bg-white/20 text-white rounded-xl font-bold flex items-center gap-2 transition-colors"
                                         >
-                                            <RefreshCcw size={20} /> 다시 공부하기
-                                        </button>
-                                        <button 
-                                            onClick={handleGenerateVideo}
-                                            disabled={isGeneratingVideo}
-                                            className="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold flex items-center gap-2 shadow-lg transition-transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-                                        >
-                                            {isGeneratingVideo ? <Loader2 className="animate-spin" /> : <Video size={20} />}
-                                            수업 영상 만들기
+                                            <RefreshCcw size={20} /> 처음으로 돌아가기
                                         </button>
                                     </div>
-
-                                    {videoUrl && (
-                                        <div className="mt-8 p-4 bg-black/40 rounded-xl border border-white/10 animate-fadeIn max-w-lg mx-auto">
-                                            <h3 className="text-white font-bold mb-2 flex items-center justify-center gap-2">
-                                                <Sparkles className="text-yellow-400" size={16} /> 나만의 수업 영상이 완성되었어요!
-                                            </h3>
-                                            <video src={videoUrl} controls className="w-full rounded-lg shadow-2xl max-h-[300px]" />
-                                        </div>
-                                    )}
                                 </div>
                             ) : (
                                 /* Active Quiz Question */
@@ -1211,17 +1304,200 @@ const Classroom: React.FC<ClassroomProps> = ({ teacher, onBack, initialSettings 
                         </div>
                     </div>
                 )}
+                
+                {status === 'activity' && lessonPlan && lessonPlan.activities && (
+                    <div className="flex flex-col items-center justify-center h-full animate-fadeIn w-full">
+                        {!selectedActivity ? (
+                            // Activity Selection Screen
+                             <div className="w-full max-w-6xl flex flex-col items-center p-4">
+                                <h2 className={`text-4xl md:text-5xl text-yellow-300 ${fontFamily} mb-8 text-center drop-shadow-md`}>
+                                    어떤 활동을 해볼까?
+                                </h2>
+                                
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full h-full max-h-[60vh] overflow-y-auto custom-scrollbar p-2">
+                                    {lessonPlan.activities.map((activity, idx) => (
+                                        <div 
+                                            key={idx}
+                                            onClick={() => selectSpecificActivity(activity)}
+                                            className="bg-white/10 hover:bg-white/20 border-2 border-white/20 hover:border-yellow-400 rounded-2xl p-6 cursor-pointer transition-all hover:transform hover:-translate-y-2 group shadow-xl flex flex-col items-center text-center h-full min-h-[250px] backdrop-blur-sm justify-between"
+                                        >
+                                            <div className="flex flex-col items-center">
+                                                <div className="w-20 h-20 bg-white/10 rounded-full flex items-center justify-center mb-4 group-hover:bg-yellow-400 group-hover:text-black transition-colors">
+                                                    {idx === 0 ? <Palette size={40} /> : idx === 1 ? <Scissors size={40} /> : <MessageCircle size={40} />}
+                                                </div>
+                                                <h3 className="text-2xl font-bold text-white mb-2 font-comic">{activity.title}</h3>
+                                                <p className="text-white/70 text-lg leading-relaxed line-clamp-4">{activity.description}</p>
+                                            </div>
+                                            <div className="mt-4 px-4 py-2 bg-yellow-400/20 rounded-full text-yellow-200 text-sm font-bold group-hover:bg-yellow-400 group-hover:text-black transition-colors">
+                                                선택하기
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                                
+                                <button 
+                                    onClick={() => handleStartClass()}
+                                    className="mt-8 px-6 py-3 bg-white/10 hover:bg-white/20 text-white rounded-xl font-bold flex items-center gap-2 transition-colors"
+                                >
+                                    <RefreshCcw size={20} /> 처음으로 돌아가기
+                                </button>
+                             </div>
+                        ) : (
+                            // Selected Activity Detail Screen - REVISED LAYOUT
+                            <div className="w-full h-full max-w-7xl mx-auto flex flex-col gap-4 p-2 relative">
+                                
+                                {/* Header: Title & Description */}
+                                <div className="w-full bg-white/10 p-4 rounded-2xl border border-white/10 backdrop-blur-sm flex flex-col relative flex-shrink-0">
+                                    <button 
+                                        onClick={() => setSelectedActivity(null)}
+                                        className="absolute top-4 left-4 text-white/50 hover:text-white flex items-center gap-1 text-sm bg-black/20 px-3 py-1 rounded-full transition-colors z-20"
+                                    >
+                                        <ArrowLeft size={16} /> 다른 활동
+                                    </button>
+
+                                    <div className="text-center px-12">
+                                        <div className="inline-block bg-pink-500 text-white px-3 py-0.5 rounded-full text-sm font-bold shadow-sm mb-2 font-comic animate-pulse">
+                                            창의 체험 활동
+                                        </div>
+                                        <h2 className={`text-3xl md:text-4xl text-yellow-300 ${fontFamily} mb-2 leading-tight`}>
+                                            {selectedActivity.title}
+                                        </h2>
+                                        <p className="text-white/80 text-lg font-comic leading-tight">
+                                            {selectedActivity.description}
+                                        </p>
+                                    </div>
+                                </div>
+
+                                {/* Main Content Grid */}
+                                <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-12 gap-4">
+                                    
+                                    {/* Left: Materials (3 cols) */}
+                                    <div className="lg:col-span-3 bg-black/20 rounded-2xl p-4 border border-white/10 flex flex-col overflow-hidden h-full">
+                                        <h3 className="text-lg text-white font-bold mb-3 flex items-center gap-2 border-b border-white/20 pb-2 flex-shrink-0">
+                                            <Scissors className="text-yellow-400" size={20} /> 준비물
+                                        </h3>
+                                        <ul className="space-y-3 overflow-y-auto custom-scrollbar pr-1 flex-1">
+                                            {selectedActivity.materials.map((item, idx) => (
+                                                <li key={idx} className="flex items-start gap-3 text-white/90 text-base md:text-lg font-comic bg-white/5 p-2 rounded-lg">
+                                                    <div className="mt-1 w-4 h-4 rounded-full border-2 border-green-400 flex-shrink-0 flex items-center justify-center">
+                                                        <div className="w-2 h-2 bg-green-400 rounded-full"></div>
+                                                    </div>
+                                                    <span className="leading-snug">{item}</span>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    </div>
+
+                                    {/* Center: Steps (5 cols) */}
+                                    <div className="lg:col-span-5 bg-black/20 rounded-2xl p-4 border border-white/10 flex flex-col overflow-hidden h-full">
+                                        <h3 className="text-lg text-white font-bold mb-3 flex items-center gap-2 border-b border-white/20 pb-2 flex-shrink-0">
+                                            <CheckSquare className="text-green-400" size={20} /> 활동 순서
+                                        </h3>
+                                        <div className="space-y-3 overflow-y-auto custom-scrollbar pr-2 flex-1">
+                                            {selectedActivity.steps.map((step, idx) => (
+                                                <div key={idx} className="flex gap-3 group bg-white/5 p-3 rounded-xl hover:bg-white/10 transition-colors">
+                                                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-yellow-500/20 border-2 border-yellow-500/50 flex items-center justify-center font-bold text-yellow-200 text-lg">
+                                                        {idx + 1}
+                                                    </div>
+                                                    <p className={`text-white/90 text-lg leading-relaxed ${fontFamily}`}>
+                                                        {step}
+                                                    </p>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* Right: Example & Actions (4 cols) */}
+                                    <div className="lg:col-span-4 flex flex-col gap-4 h-full">
+                                        {/* Example Image */}
+                                        <div className="flex-1 bg-black/20 rounded-2xl p-4 border border-white/10 flex flex-col relative min-h-[200px]">
+                                            <h3 className="text-lg text-white font-bold mb-2 flex items-center gap-2 border-b border-white/20 pb-2 flex-shrink-0">
+                                                <Sparkles className="text-yellow-400" size={20} /> 완성 예시
+                                            </h3>
+                                            <div className="flex-1 flex items-center justify-center bg-white/5 rounded-xl overflow-hidden relative border-2 border-dashed border-white/10 group">
+                                                {isGeneratingActivityImage ? (
+                                                    <div className="flex flex-col items-center gap-3 animate-pulse">
+                                                        <Loader2 className="animate-spin text-yellow-400" size={40} />
+                                                        <span className="text-white/50 text-sm font-comic">예시 작품 만드는 중...</span>
+                                                    </div>
+                                                ) : activityExampleImage ? (
+                                                    <>
+                                                        <img src={activityExampleImage} alt="Example" className="w-full h-full object-contain transition-transform duration-500 group-hover:scale-105" />
+                                                        <div className="absolute inset-0 pointer-events-none shadow-[inset_0_0_20px_rgba(0,0,0,0.5)] rounded-xl"></div>
+                                                    </>
+                                                ) : (
+                                                    <div className="text-white/20 flex flex-col items-center">
+                                                        <span className="text-4xl mb-2">🎨</span>
+                                                        <span className="text-sm">이미지 준비 중</span>
+                                                    </div>
+                                                )}
+                                                
+                                                {/* Regenerate Button Overlay */}
+                                                {activityExampleImage && !isGeneratingActivityImage && (
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            handleRegenerateActivityImage();
+                                                        }}
+                                                        className="absolute top-2 right-2 bg-black/50 hover:bg-black/70 text-white p-2 rounded-full opacity-0 group-hover:opacity-100 transition-opacity z-20"
+                                                        title="다른 예시 만들기"
+                                                    >
+                                                        <RefreshCcw size={16} />
+                                                    </button>
+                                                )}
+
+                                                {/* Download Button overlay */}
+                                                {activityExampleImage && (
+                                                    <a 
+                                                        href={activityExampleImage} 
+                                                        download="activity-example.png"
+                                                        className="absolute bottom-2 right-2 bg-black/50 hover:bg-black/70 text-white p-2 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                                                        title="이미지 저장"
+                                                    >
+                                                        <Download size={16} />
+                                                    </a>
+                                                )}
+                                            </div>
+                                        </div>
+                                        
+                                        {/* Action Buttons */}
+                                        <div className="flex flex-col gap-3 flex-shrink-0">
+                                            <button 
+                                                onClick={() => {
+                                                    const materialsText = selectedActivity.materials.join(', ');
+                                                    const stepsText = selectedActivity.steps.map((step, i) => `${i + 1}단계, ${step}`).join('. ');
+                                                    const detailScript = `자, ${selectedActivity.title} 활동을 다시 설명해줄게. ${selectedActivity.description}. 준비물은 ${materialsText}가 필요해. 활동 순서는 다음과 같아. ${stepsText}. 완성되면 오른쪽 그림처럼 멋진 작품이 될 거야.`;
+                                                    playTeacherVoice(detailScript);
+                                                }}
+                                                className="w-full py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-colors shadow-lg active:scale-95 text-lg"
+                                            >
+                                                <Volume2 size={24} /> 설명 다시 듣기
+                                            </button>
+                                            <button 
+                                                onClick={() => handleStartClass()}
+                                                className="w-full py-4 bg-yellow-500 hover:bg-yellow-400 text-yellow-900 rounded-xl font-bold flex items-center justify-center gap-2 transition-colors shadow-lg active:scale-95 text-lg"
+                                            >
+                                                <Trophy size={24} /> 수업 마치기
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )}
             </div>
 
-            {/* Blackboard Navigation Footer */}
+            {/* Blackboard Navigation Footer - Only show when NOT in activity selection/detail */}
             {status === 'teaching' && !isViewAllMode && !showOverview && (
-                <div className="h-20 bg-[#4e342e] flex items-center justify-between px-6 border-t-4 border-[#3e2723] z-20">
+                <div className="h-14 bg-[#4e342e] flex items-center justify-between px-4 border-t-4 border-[#3e2723] z-20">
                     <button 
                         onClick={handlePrevSection}
                         disabled={currentSectionIndex === 0}
-                        className="flex items-center gap-2 text-[#d7ccc8] disabled:opacity-30 hover:text-white transition-colors font-bold font-chalk text-lg"
+                        className="flex items-center gap-2 text-[#d7ccc8] disabled:opacity-30 hover:text-white transition-colors font-bold font-chalk text-base"
                     >
-                        <ArrowLeft size={24} /> 이전
+                        <ArrowLeft size={20} /> 이전
                     </button>
 
                     <div className="flex gap-2">
@@ -1232,9 +1508,9 @@ const Classroom: React.FC<ClassroomProps> = ({ teacher, onBack, initialSettings 
 
                     <button 
                         onClick={handleNextSection}
-                        className="flex items-center gap-2 text-[#d7ccc8] hover:text-white transition-colors font-bold font-chalk text-lg"
+                        className="flex items-center gap-2 text-[#d7ccc8] hover:text-white transition-colors font-bold font-chalk text-base"
                     >
-                        {currentSectionIndex < (lessonPlan?.sections.length || 0) - 1 ? "다음" : "퀴즈 풀기"} <ArrowRight size={24} />
+                        {currentSectionIndex < (lessonPlan?.sections.length || 0) - 1 ? "다음" : "퀴즈 풀기"} <ArrowRight size={20} />
                     </button>
                 </div>
             )}

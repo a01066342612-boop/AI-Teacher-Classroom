@@ -23,7 +23,7 @@ const lessonPlanSchema = {
           visualPrompts: { 
             type: Type.ARRAY, 
             items: { type: Type.STRING },
-            description: "List of 3 distinct English prompts for image generation" 
+            description: "List of 1 English prompt for image generation" 
           },
           visualType: { type: Type.STRING, enum: ["image", "none"] }
         },
@@ -41,9 +41,24 @@ const lessonPlanSchema = {
         },
         required: ["question", "options", "answer"]
       }
+    },
+    activities: {
+      type: Type.ARRAY,
+      description: "List of 3 different creative activities for students to choose from",
+      items: {
+        type: Type.OBJECT,
+        properties: {
+            title: { type: Type.STRING, description: "Title of the activity" },
+            description: { type: Type.STRING, description: "Short motivation/intro for the activity in Korean" },
+            materials: { type: Type.ARRAY, items: { type: Type.STRING }, description: "List of materials needed in Korean" },
+            steps: { type: Type.ARRAY, items: { type: Type.STRING }, description: "Step by step instructions in Korean" },
+            exampleResultDesc: { type: Type.STRING, description: "A detailed visual English description of what the finished activity result looks like (e.g., 'a colorful drawing of a space rocket', 'a clay model of a dinosaur'). Used for image generation." }
+        },
+        required: ["title", "description", "materials", "steps", "exampleResultDesc"]
+      }
     }
   },
-  required: ["topic", "learningGoal", "sections", "quizzes"]
+  required: ["topic", "learningGoal", "sections", "quizzes", "activities"]
 };
 
 // Schema for Teacher Metadata
@@ -106,8 +121,9 @@ export const generateLessonPlan = async (
     2. **반드시 'learningGoal' 필드에 오늘 수업의 핵심 목표를 한 문장으로 요약해서 넣어주세요.**
     3. 학생들이 지루해하지 않도록 흥미로운 설명과 예시를 사용해주세요.
     4. 마지막 10번째 섹션은 반드시 **'배운 내용 정리하기'**라는 제목의 요약 섹션으로 구성하세요.
-    5. 각 섹션마다 내용의 이해를 돕기 위해, 서로 다른 **3개**의 이미지 생성을 위한 영어 프롬프트(visualPrompts)를 작성해주세요.
-    6. 마지막에는 내용을 확인하는 **퀴즈를 정확히 ${quizCount}문제** 포함해주세요.
+    5. 각 섹션마다 내용의 이해를 돕기 위해, **1개**의 이미지 생성을 위한 영어 프롬프트(visualPrompts)를 작성해주세요.
+    6. 내용을 확인하는 **퀴즈를 정확히 ${quizCount}문제** 포함해주세요.
+    7. **퀴즈 뒤에 ${grade} 수준에 맞는 재미있는 '창의 체험 활동'을 3가지 제안해주세요.** (예: 그림 그리기, 만들기, 편지 쓰기, 역할극, 퀴즈 만들기 등 다양한 유형). 각 활동별로 준비물(materials), 활동 순서(steps), 그리고 **완성된 결과물의 시각적 묘사(exampleResultDesc, 영어)**를 상세히 적어주세요.
     
     주의: 내용은 ${grade} 수준에 맞춰 이해하기 쉽고 흥미롭게 작성해야 합니다.
   `;
@@ -148,8 +164,9 @@ export const generateLessonPlanFromText = async (
     1. 내용을 충분히 다루기 위해 **총 10단계(섹션)**로 나누어 구성해주세요.
     2. **반드시 'learningGoal' 필드에 오늘 수업의 핵심 목표를 한 문장으로 요약해서 넣어주세요.**
     3. 마지막 10번째 섹션은 반드시 내용을 요약하는 **'정리하기'** 시간으로 만들어주세요.
-    4. 각 섹션마다 내용의 이해를 돕기 위해, 서로 다른 **3개**의 이미지 생성을 위한 영어 프롬프트(visualPrompts)를 작성해주세요.
+    4. 각 섹션마다 내용의 이해를 돕기 위해, **1개**의 이미지 생성을 위한 영어 프롬프트(visualPrompts)를 작성해주세요.
     5. 마지막에는 내용을 확인하는 **퀴즈를 정확히 ${quizCount}문제** 포함해주세요.
+    6. **퀴즈 뒤에 이 내용과 관련된 '창의 체험 활동'을 3가지 제안해주세요.** 준비물(materials), 활동 순서(steps), **완성된 결과물의 시각적 묘사(exampleResultDesc, 영어)**를 상세히 포함하세요.
   `;
 
   const response = await ai.models.generateContent({

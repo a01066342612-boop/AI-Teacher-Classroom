@@ -1,5 +1,4 @@
 
-
 export interface Teacher {
   id: string;
   name: string;
@@ -36,9 +35,18 @@ export interface QuizItem {
   answer: number; // Index
 }
 
+export interface ActivityItem {
+  title: string;
+  description: string; // Intro/Motivation
+  materials: string[]; // List of materials needed
+  steps: string[]; // Step-by-step instructions
+  exampleResultDesc: string; // Description of the result for image generation
+}
+
 export interface LessonPlan {
   topic: string;
   learningGoal: string; // Learning objective summary
   sections: LessonContent[];
   quizzes: QuizItem[]; // Array of quiz questions
+  activities: ActivityItem[]; // Array of suggested activities
 }
