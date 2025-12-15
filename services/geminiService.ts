@@ -187,20 +187,30 @@ export const generateLessonPlanFromText = async (
  * Generates an image based on a prompt.
  */
 export const generateClassroomImage = async (prompt: string): Promise<string> => {
-  const response = await ai.models.generateContent({
-    model: 'gemini-2.5-flash-image',
-    contents: prompt,
-    config: {
-      // 2.5 flash image does not take aspect ratio in config for generateContent usually
-    }
-  });
+  const maxRetries = 3;
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash-image',
+        contents: { parts: [{ text: prompt }] },
+        config: {
+          // 2.5 flash image does not take aspect ratio in config for generateContent usually
+        }
+      });
 
-  for (const part of response.candidates?.[0]?.content?.parts || []) {
-    if (part.inlineData) {
-      return `data:image/png;base64,${part.inlineData.data}`;
+      for (const part of response.candidates?.[0]?.content?.parts || []) {
+        if (part.inlineData) {
+          return `data:image/png;base64,${part.inlineData.data}`;
+        }
+      }
+    } catch (e) {
+      console.warn(`Image generation attempt ${attempt + 1} failed:`, e);
+      if (attempt === maxRetries - 1) throw e;
+      await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
     }
   }
-  throw new Error("No image generated");
+  
+  throw new Error("No image generated after retries");
 };
 
 /**

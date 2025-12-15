@@ -189,6 +189,7 @@ const Classroom: React.FC<ClassroomProps> = ({ teacher, onBack, initialSettings 
   const [selectedActivity, setSelectedActivity] = useState<ActivityItem | null>(null);
   const [activityExampleImage, setActivityExampleImage] = useState<string | null>(null);
   const [isGeneratingActivityImage, setIsGeneratingActivityImage] = useState(false);
+  const [activityImages, setActivityImages] = useState<Record<number, string>>({});
   
   const fontFamily = initialSettings.fontFamily;
   const fontSizeIndex = initialSettings.fontSizeIndex;
@@ -399,6 +400,21 @@ const Classroom: React.FC<ClassroomProps> = ({ teacher, onBack, initialSettings 
   const prefetchAudio = (text: string) => {
       getAudioBuffer(text).catch(e => console.warn("Prefetch error", e));
   }
+  
+  const prefetchActivityImages = (activities: ActivityItem[]) => {
+      activities.forEach((activity, idx) => {
+          // Check if we already have it or requested it
+          if (activityImages[idx]) return;
+
+          generateClassroomImage(activity.exampleResultDesc + " style: cute, colorful, educational, kids craft masterpiece, high quality, white background, single object, clear details")
+            .then(url => {
+                if(isMountedRef.current) {
+                    setActivityImages(prev => ({ ...prev, [idx]: url }));
+                }
+            })
+            .catch(e => console.warn(`Activity image ${idx} prefetch failed`, e));
+      });
+  };
 
   const handleStartClass = async (fileContent?: string) => {
     if (!topic.trim() && !fileContent) return;
@@ -420,6 +436,7 @@ const Classroom: React.FC<ClassroomProps> = ({ teacher, onBack, initialSettings 
     setIsQuizFinished(false);
     setSelectedActivity(null);
     setAudioError(null);
+    setActivityImages({});
     
     // Reset caches for new lesson
     audioCache.current.clear();
@@ -452,6 +469,19 @@ const Classroom: React.FC<ClassroomProps> = ({ teacher, onBack, initialSettings 
       
       if (plan.sections.length > 0) {
           prefetchAudio(plan.sections[0].text);
+          
+          // --- OPTIMIZATION: Prefetch Image for Section 0 during Overview ---
+          const firstSection = plan.sections[0];
+          if (firstSection.visualType === 'image' && firstSection.visualPrompts && firstSection.visualPrompts.length > 0) {
+             const prompt = firstSection.visualPrompts[0];
+             generateClassroomImage(prompt + " style: clean educational illustration, colorful, cute, high quality")
+                .then(url => {
+                    if (isMountedRef.current) {
+                        setSectionImages(prev => ({ ...prev, 0: [url] }));
+                    }
+                })
+                .catch(e => console.error("First section image prefetch failed", e));
+          }
       }
 
     } catch (error) {
@@ -530,8 +560,36 @@ const Classroom: React.FC<ClassroomProps> = ({ teacher, onBack, initialSettings 
         playTeacherVoice(section.text);
     }
     
+    // --- OPTIMIZATION: Prefetch Audio AND Image for Next Section ---
     if (index + 1 < plan.sections.length) {
         prefetchAudio(plan.sections[index + 1].text);
+        
+        // Prefetch Image for Next Section
+        const nextSection = plan.sections[index + 1];
+        if (!sectionImages[index + 1] && nextSection.visualType === 'image' && nextSection.visualPrompts && nextSection.visualPrompts.length > 0) {
+            console.log("Prefetching image for section", index + 1);
+            const promptToUse = nextSection.visualPrompts[0];
+            generateClassroomImage(promptToUse + " style: clean educational illustration, colorful, cute, high quality")
+                .then(url => {
+                    if (isMountedRef.current) {
+                         setSectionImages(prev => {
+                             // Avoid overwriting if already exists
+                             if (prev[index + 1]) return prev;
+                             return { ...prev, [index + 1]: [url] };
+                         });
+                    }
+                })
+                .catch(err => console.warn("Image prefetch failed", err));
+        }
+    } else {
+        // --- OPTIMIZATION: Last section -> Prefetch Quiz 1 Audio ---
+        if (plan.quizzes && plan.quizzes.length > 0) {
+             const firstQuiz = plan.quizzes[0];
+             const optionsText = firstQuiz.options.map((opt, i) => `${i + 1}번, ${opt}`).join('. ');
+             const textToRead = `문제 1번. ${firstQuiz.question}. ${optionsText}. 정답을 골라봐.`;
+             console.log("Prefetching first quiz audio...");
+             prefetchAudio(textToRead);
+        }
     }
   };
 
@@ -550,21 +608,34 @@ const Classroom: React.FC<ClassroomProps> = ({ teacher, onBack, initialSettings 
     setActivityExampleImage(null);
     const activityScript = `퀴즈도 잘 풀었구나! 이제는 재미있는 활동을 해볼 시간이야. 선생님이 3가지 활동을 준비했어. 하고 싶은 활동을 골라보렴.`;
     playTeacherVoice(activityScript);
+
+    // Also try prefetching here just in case it wasn't triggered earlier
+    prefetchActivityImages(lessonPlan.activities);
   };
 
-  const selectSpecificActivity = (activity: ActivityItem) => {
+  const selectSpecificActivity = (activity: ActivityItem, index: number) => {
       setSelectedActivity(activity);
-      setActivityExampleImage(null);
-      setIsGeneratingActivityImage(true);
+      
+      // Use cached image if available
+      if (activityImages[index]) {
+          setActivityExampleImage(activityImages[index]);
+          setIsGeneratingActivityImage(false);
+      } else {
+          setActivityExampleImage(null);
+          setIsGeneratingActivityImage(true);
 
-      generateClassroomImage(activity.exampleResultDesc + " style: cute, colorful, educational, kids craft masterpiece, high quality, white background, single object, clear details")
-        .then(url => {
-            if(isMountedRef.current) setActivityExampleImage(url);
-        })
-        .catch(e => console.error(e))
-        .finally(() => {
-            if(isMountedRef.current) setIsGeneratingActivityImage(false);
-        });
+          generateClassroomImage(activity.exampleResultDesc + " style: cute, colorful, educational, kids craft masterpiece, high quality, white background, single object, clear details")
+            .then(url => {
+                if(isMountedRef.current) {
+                    setActivityExampleImage(url);
+                    setActivityImages(prev => ({ ...prev, [index]: url }));
+                }
+            })
+            .catch(e => console.error(e))
+            .finally(() => {
+                if(isMountedRef.current) setIsGeneratingActivityImage(false);
+            });
+      }
 
       const materialsText = activity.materials.join(', ');
       const stepsText = activity.steps.map((step, i) => `${i + 1}단계, ${step}`).join('. ');
@@ -596,6 +667,12 @@ const Classroom: React.FC<ClassroomProps> = ({ teacher, onBack, initialSettings 
       if (index >= plan.quizzes.length) {
           setIsQuizFinished(true);
           playTeacherVoice(`모든 퀴즈가 끝났어. ${plan.quizzes.length}문제 중에 ${quizScore}문제를 맞췄구나! 참 잘했어!`);
+          
+          // --- OPTIMIZATION: Quiz Finished -> Start Prefetching Activity Images ---
+          if (plan.activities && plan.activities.length > 0) {
+              console.log("Prefetching activity images...");
+              prefetchActivityImages(plan.activities);
+          }
           return;
       }
 
@@ -613,6 +690,13 @@ const Classroom: React.FC<ClassroomProps> = ({ teacher, onBack, initialSettings 
           const nextOptionsText = nextQuiz.options.map((opt, i) => `${i + 1}번, ${opt}`).join('. ');
           const nextTextToRead = `문제 ${index + 2}번. ${nextQuiz.question}. ${nextOptionsText}. 정답을 골라봐.`;
           prefetchAudio(nextTextToRead);
+      } else {
+          // --- OPTIMIZATION: Last Quiz -> Prefetch Activity Intro Audio ---
+          if (plan.activities && plan.activities.length > 0) {
+              const activityScript = `퀴즈도 잘 풀었구나! 이제는 재미있는 활동을 해볼 시간이야. 선생님이 3가지 활동을 준비했어. 하고 싶은 활동을 골라보렴.`;
+              console.log("Prefetching activity intro audio...");
+              prefetchAudio(activityScript);
+          }
       }
   };
 
@@ -1318,7 +1402,7 @@ const Classroom: React.FC<ClassroomProps> = ({ teacher, onBack, initialSettings 
                                     {lessonPlan.activities.map((activity, idx) => (
                                         <div 
                                             key={idx}
-                                            onClick={() => selectSpecificActivity(activity)}
+                                            onClick={() => selectSpecificActivity(activity, idx)}
                                             className="bg-white/10 hover:bg-white/20 border-2 border-white/20 hover:border-yellow-400 rounded-2xl p-6 cursor-pointer transition-all hover:transform hover:-translate-y-2 group shadow-xl flex flex-col items-center text-center h-full min-h-[250px] backdrop-blur-sm justify-between"
                                         >
                                             <div className="flex flex-col items-center">
